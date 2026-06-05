@@ -11,21 +11,33 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+ctk.set_default_color_theme("blue")
+ctk.set_widget_scaling(1.12)
+ctk.set_window_scaling(1.0)
 
 COLORS = {
-    "bg": "#0f0f0f",
-    "surface": "#1a1a1a",
-    "surface2": "#242424",
-    "accent": "#00ff88",
-    "accent_dim": "#00cc6a",
-    "text": "#ffffff",
-    "text_dim": "#888888",
-    "ai_bubble": "#1e2d1e",
-    "user_bubble": "#1a1a2e",
-    "border": "#2a2a2a",
-    "error": "#ff4444",
+    "bg": "#111318",
+    "surface": "#181B22",
+    "surface2": "#222733",
+    "accent": "#4F8CFF",
+    "accent_dim": "#3B6FD9",
+    "text": "#F5F7FA",
+    "text_dim": "#A7AFBD",
+    "ai_bubble": "#1B2433",
+    "user_bubble": "#243B55",
+    "border": "#303746",
+    "success": "#45D483",
+    "error": "#FF5C6C",
 }
+
+FONT_FAMILY = "Segoe UI"
+
+def f(size=14, bold=False):
+    return ctk.CTkFont(
+        family=FONT_FAMILY,
+        size=size,
+        weight="bold" if bold else "normal"
+    )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCELS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "excels"))
@@ -90,8 +102,8 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("docs ")
-        self.geometry("800x600")
-        self.minsize(700, 500)
+        self.geometry("900x650")
+        self.minsize(760, 560)
         self.configure(fg_color=COLORS["bg"])
         self.current_frame = None
         self.mostrar_menu()
@@ -122,21 +134,21 @@ class MenuFrame(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text="ia documents",
-            font=ctk.CTkFont(family="Courier New", size=48, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=48, weight="bold"),
             text_color=COLORS["accent"]
         ).pack(pady=(80, 8))
 
         ctk.CTkLabel(
             self,
             text="documents generator whit ai (now using llama-3.3-70b-versatile)",
-            font=ctk.CTkFont(size=14),
+            font=f(14),
             text_color=COLORS["text_dim"]
         ).pack(pady=(0, 60))
 
         btn_cfg = dict(
             width=260, height=52,
-            font=ctk.CTkFont(size=15, weight="bold"),
-            corner_radius=8,
+            font=f(15, True),
+            corner_radius=14,
         )
 
         ctk.CTkButton(
@@ -180,6 +192,7 @@ class ChatFrame(ctk.CTkFrame):
         self.seleccion = "1" if tipo == "excel" else "2"
         self.ultimo_json = json_inicial
         self.ultimo_path = path_inicial
+        self.historial_mensajes = []  # Guardar últimos 3 mensajes para contexto
 
         # Si viene con JSON, arranca directo en modo edición
         if json_inicial and path_inicial:
@@ -191,7 +204,7 @@ class ChatFrame(ctk.CTkFrame):
         self.after(300, self._saludo_inicial)
 
     def _build_ui(self):
-        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=52, corner_radius=0)
+        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=72, corner_radius=0)
         header.pack(fill="x")
         header.pack_propagate(False)
 
@@ -200,7 +213,7 @@ class ChatFrame(ctk.CTkFrame):
             fg_color="transparent", hover_color=COLORS["surface2"],
             text_color=COLORS["text_dim"],
             command=self.master.mostrar_menu,
-            font=ctk.CTkFont(size=18)
+            font=f(18, True)
         ).pack(side="left", padx=8, pady=8)
 
         tipo_str = "Excel" if self.tipo == "excel" else "Word"
@@ -208,28 +221,38 @@ class ChatFrame(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text=f"Generar {tipo_str}{modo}",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=f(15, True),
             text_color=COLORS["text"]
         ).pack(side="left", padx=4)
 
         self.chat_scroll = ctk.CTkScrollableFrame(self, fg_color=COLORS["bg"], corner_radius=0)
         self.chat_scroll.pack(fill="both", expand=True)
 
-        input_bar = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=64, corner_radius=0)
+        input_bar = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=72, corner_radius=0)
         input_bar.pack(fill="x")
         input_bar.pack_propagate(False)
 
         self.input_box = ctk.CTkEntry(
             input_bar,
-            placeholder_text="Escribí acá...",
+            placeholder_text="Escribí acá... (escribe /nombredeimagen y luego :x (num) para el tamaño de la imagen, default 12. ejemplo /logo:8)",
             fg_color=COLORS["surface2"],
             border_color=COLORS["border"],
             text_color=COLORS["text"],
-            font=ctk.CTkFont(size=13),
-            height=40, corner_radius=8
+            font=f(13),
+            height=40, corner_radius=14
         )
         self.input_box.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=12)
-        self.input_box.bind("<Return>", lambda e: self._enviar())
+        self.input_box.bind("<Return>", lambda e: self._manejar_enter())
+        self.input_box.bind("<KeyRelease>", lambda e: self._actualizar_autocompletado())
+        self.input_box.bind("<Up>", lambda e: self._navegar_sugerencias(-1))
+        self.input_box.bind("<Down>", lambda e: self._navegar_sugerencias(1))
+        
+        # Variables para autocompletado
+        self.sugerencias_frame = None
+        self.sugerencias_lista = []
+        self.indice_seleccion = -1
+        self.sugerencias_botones = []
+        self.ultima_barra = -1
 
         self.btn_enviar = ctk.CTkButton(
             input_bar, text="Enviar",
@@ -237,14 +260,14 @@ class ChatFrame(ctk.CTkFrame):
             fg_color=COLORS["accent"], hover_color=COLORS["accent_dim"],
             text_color="#000000",
             font=ctk.CTkFont(size=13, weight="bold"),
-            corner_radius=8, command=self._enviar
+            corner_radius=14, command=self._enviar
         )
         self.btn_enviar.pack(side="right", padx=(0, 12), pady=12)
 
     def _agregar_burbuja(self, texto, es_ia=True):
         color = COLORS["ai_bubble"] if es_ia else COLORS["user_bubble"]
         anchor = "w" if es_ia else "e"
-        prefix = "🤖  " if es_ia else ""
+        prefix = "  " if es_ia else ""
 
         wrapper = ctk.CTkFrame(self.chat_scroll, fg_color="transparent")
         wrapper.pack(fill="x", pady=4, padx=12)
@@ -254,9 +277,9 @@ class ChatFrame(ctk.CTkFrame):
             text=prefix + texto,
             fg_color=color,
             text_color=COLORS["text"],
-            font=ctk.CTkFont(size=13),
+            font=f(13),
             corner_radius=10,
-            wraplength=520,
+            wraplength=700,
             justify="left",
             anchor="w",
             padx=14, pady=10
@@ -272,7 +295,7 @@ class ChatFrame(ctk.CTkFrame):
             fg_color=COLORS["accent"], hover_color=COLORS["accent_dim"],
             text_color="#000000",
             font=ctk.CTkFont(size=13, weight="bold"),
-            corner_radius=8,
+            corner_radius=14,
             command=lambda: os.startfile(path) if os.path.exists(path) else None
         ).pack(anchor="w")
         self.after(50, lambda: self.chat_scroll._parent_canvas.yview_moveto(1.0))
@@ -325,6 +348,196 @@ class ChatFrame(ctk.CTkFrame):
         
         return imagenes, prompt_limpio.strip()
 
+    def _construir_contexto_historial(self):
+        """Construye string con contexto del historial de mensajes"""
+        if not self.historial_mensajes or len(self.historial_mensajes) <= 1:
+            return ""
+        
+        # Excluir el último mensaje (que es el actual que se está procesando)
+        mensajes_previos = self.historial_mensajes[:-1]
+        
+        if not mensajes_previos:
+            return ""
+        
+        contexto = "\nCONTEXT FROM PREVIOUS MESSAGES:\n"
+        for i, msg in enumerate(mensajes_previos, 1):
+            contexto += f"{i}. {msg}\n"
+        contexto += "---\n"
+        
+        return contexto
+
+    def _actualizar_autocompletado(self):
+        """Detecta / y muestra sugerencias de imágenes"""
+        texto = self.input_box.get()
+        
+        # Buscar el último /
+        self.ultima_barra = texto.rfind('/')
+        if self.ultima_barra == -1:
+            self._ocultar_sugerencias()
+            return
+        
+        # Obtener lo que está después del /
+        pos_despues = self.ultima_barra + 1
+        if pos_despues > len(texto):
+            self._ocultar_sugerencias()
+            return
+        
+        # Solo mostrar si hay algo después del / o si es una posición válida
+        partes = texto[pos_despues:].split()
+        prefijo = partes[0] if partes else ""
+        
+        # Obtener galería
+        galeria = cargar_galeria()
+        if not galeria:
+            self._ocultar_sugerencias()
+            return
+        
+        # Filtrar imágenes que coincidan
+        self.sugerencias_lista = [
+            img for img in galeria.keys() 
+            if img.lower().startswith(prefijo.lower())
+        ]
+        
+        # Si hay sugerencias, mostrar popup
+        if self.sugerencias_lista:
+            self._mostrar_sugerencias(self.sugerencias_lista)
+            self.indice_seleccion = 0
+        else:
+            self._ocultar_sugerencias()
+
+    def _mostrar_sugerencias(self, sugerencias):
+        """Muestra frame con sugerencias justo arriba del input_box"""
+        self._ocultar_sugerencias()
+        
+     
+        self.input_box.update_idletasks()
+        
+        try:
+            
+
+            x = self.input_box.winfo_rootx() - self.winfo_rootx()
+            y = self.input_box.winfo_rooty() - self.winfo_rooty()
+            w = self.input_box.winfo_width()
+            h = min(len(sugerencias), 5) * 32 + 12
+
+            y -= h + 8
+        except:
+            return
+        
+        
+        self.sugerencias_frame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["surface"],
+            border_color=COLORS["accent"],
+            border_width=1,
+            corner_radius=12,
+            width=w,
+            height=h
+        )
+        self.sugerencias_frame.place(
+    x=x,
+    y=max(0, y)
+)
+        self.sugerencias_frame.lift()
+        
+        scroll_frame = ctk.CTkFrame(
+            self.sugerencias_frame,
+            fg_color=COLORS["surface"]
+        )
+        scroll_frame.pack(fill="both", expand=True, padx=6, pady=6)
+        
+        # Agregar sugerencias como botones
+        self.sugerencias_botones = []
+        for i, sugerencia in enumerate(sugerencias[:8]):  # Máximo 8 sugerencias
+            btn = ctk.CTkButton(
+                scroll_frame,
+                text=f"  /{sugerencia}",
+                text_color=COLORS["accent"] if i == self.indice_seleccion else COLORS["text"],
+                fg_color=COLORS["surface2"] if i == self.indice_seleccion else COLORS["bg"],
+                hover_color=COLORS["accent_dim"],
+                font=f(11),
+                height=28,
+                corner_radius=4,
+                command=lambda s=sugerencia: self._insertar_sugerencia(s)
+            )
+            btn.pack(fill="x", padx=0, pady=2)
+            btn.indice = i
+            self.sugerencias_botones.append(btn)
+
+    def _ocultar_sugerencias(self):
+        """Cierra el frame de sugerencias"""
+        if self.sugerencias_frame:
+            try:
+                self.sugerencias_frame.destroy()
+            except:
+                pass
+            self.sugerencias_frame = None
+            self.sugerencias_botones = []
+        self.indice_seleccion = -1
+
+    def _manejar_enter(self):
+        """Maneja Enter: si hay sugerencia seleccionada, la inserta; si no, envía"""
+        if self.sugerencias_frame and self.indice_seleccion >= 0 and self.indice_seleccion < len(self.sugerencias_lista):
+            # Hay sugerencia seleccionada, insertarla
+            sugerencia = self.sugerencias_lista[self.indice_seleccion]
+            self._insertar_sugerencia(sugerencia)
+            return "break"
+        
+        # No hay sugerencia o no hay popup, enviar mensaje
+        self._enviar()
+
+    def _navegar_sugerencias(self, direccion):
+        """Navega entre sugerencias con flechas"""
+        if not self.sugerencias_lista or not self.sugerencias_frame:
+            return "break"
+        
+        # Deseleccionar anterior
+        if self.indice_seleccion >= 0 and self.indice_seleccion < len(self.sugerencias_botones):
+            btn = self.sugerencias_botones[self.indice_seleccion]
+            btn.configure(fg_color=COLORS["bg"], text_color=COLORS["text"])
+        
+        # Mover selección
+        self.indice_seleccion += direccion
+        self.indice_seleccion = max(0, min(self.indice_seleccion, len(self.sugerencias_lista) - 1))
+        
+        # Seleccionar nuevo
+        if self.indice_seleccion >= 0 and self.indice_seleccion < len(self.sugerencias_botones):
+            btn = self.sugerencias_botones[self.indice_seleccion]
+            btn.configure(fg_color=COLORS["surface2"], text_color=COLORS["accent"])
+        
+        return "break"
+
+    def _insertar_sugerencia(self, sugerencia):
+        """Inserta la sugerencia seleccionada en el input"""
+        texto_actual = self.input_box.get()
+        
+        # Usar self.ultima_barra que se guardó en _actualizar_autocompletado
+        pos_barra = self.ultima_barra
+        pos_texto = pos_barra + 1
+        
+        # Extraer la escala si la hay (ej: /imagen:8)
+        escala = ""
+        if pos_texto < len(texto_actual):
+            resto = texto_actual[pos_texto:].split()[0]
+            if ':' in resto:
+                escala = ":" + resto.split(':')[1]
+        
+        # Construir nuevo texto
+        texto_nuevo = texto_actual[:pos_barra] + "/" + sugerencia + escala
+        
+        # Si había más texto después, agregarlo
+        if pos_texto < len(texto_actual):
+            # Encontrar fin de la palabra actual
+            fin_palabra = pos_texto
+            while fin_palabra < len(texto_actual) and texto_actual[fin_palabra] not in ' \t':
+                fin_palabra += 1
+            texto_nuevo += texto_actual[fin_palabra:]
+        
+        self.input_box.delete(0, "end")
+        self.input_box.insert(0, texto_nuevo)
+        self._ocultar_sugerencias()
+        self.input_box.focus()
+
     def _saludo_inicial(self):
         if self.estado == "editando":
             nombre = os.path.splitext(os.path.basename(self.ultimo_path))[0]
@@ -340,6 +553,11 @@ class ChatFrame(ctk.CTkFrame):
         self.input_box.delete(0, "end")
         self._agregar_burbuja(texto, es_ia=False)
         self._set_input(False)
+
+        # Guardar en historial (máximo 3 últimos mensajes)
+        self.historial_mensajes.append(texto)
+        if len(self.historial_mensajes) > 3:
+            self.historial_mensajes.pop(0)
 
         if self.estado == "esperando_prompt":
             self._agregar_burbuja("Procesando tu pedido...")
@@ -358,8 +576,15 @@ class ChatFrame(ctk.CTkFrame):
             # Extraer imágenes del prompt del usuario
             imagenes, prompt_limpio = self._extraer_imagenes(prompt)
 
+            # Construir contexto del historial
+            contexto = self._construir_contexto_historial()
+
             self._agregar_burbuja("Mejorando tu prompt...")
             prompt_mejorado = mejorar_prompt(prompt_limpio, self.seleccion)
+
+            # Agregar contexto si existe historial
+            if contexto:
+                prompt_mejorado = contexto + prompt_mejorado
 
             if self.seleccion == "1":
                 self._agregar_burbuja("Buscando datos en la web...")
@@ -439,6 +664,9 @@ class ChatFrame(ctk.CTkFrame):
         # Extraer imágenes del pedido del usuario
         imagenes, pedido_limpio = self._extraer_imagenes(pedido)
 
+        # Construir contexto del historial
+        contexto = self._construir_contexto_historial()
+
         try:
             from back.ai import editar_json, parsear_json
             from back.config import instrucciones_excel, instrucciones_word
@@ -448,9 +676,15 @@ class ChatFrame(ctk.CTkFrame):
             import pandas as pd
 
             instrucciones = instrucciones_excel if self.seleccion == "1" else instrucciones_word
+            
+            # Construir pedido con contexto
+            pedido_con_contexto = pedido_limpio
+            if contexto:
+                pedido_con_contexto = contexto + pedido_limpio
+
             contenido = editar_json(
                 json.dumps(self.ultimo_json, ensure_ascii=False),
-                pedido_limpio,
+                pedido_con_contexto,
                 instrucciones
             )
 
@@ -495,7 +729,7 @@ class BibliotecaFrame(ctk.CTkFrame):
         self._build_ui()
 
     def _build_ui(self):
-        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=52, corner_radius=0)
+        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=72, corner_radius=0)
         header.pack(fill="x")
         header.pack_propagate(False)
 
@@ -504,12 +738,12 @@ class BibliotecaFrame(ctk.CTkFrame):
             fg_color="transparent", hover_color=COLORS["surface2"],
             text_color=COLORS["text_dim"],
             command=self.master.mostrar_menu,
-            font=ctk.CTkFont(size=18)
+            font=f(18, True)
         ).pack(side="left", padx=8, pady=8)
 
         ctk.CTkLabel(
             header, text="Biblioteca",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=f(15, True),
             text_color=COLORS["text"]
         ).pack(side="left", padx=4)
 
@@ -529,7 +763,7 @@ class BibliotecaFrame(ctk.CTkFrame):
                 self.scroll,
                 text="No hay archivos generados todavía.",
                 text_color=COLORS["text_dim"],
-                font=ctk.CTkFont(size=14)
+                font=f(14)
             ).pack(pady=40)
             return
 
@@ -537,7 +771,7 @@ class BibliotecaFrame(ctk.CTkFrame):
             self._agregar_entrada(entry)
 
     def _agregar_entrada(self, entry):
-        row = ctk.CTkFrame(self.scroll, fg_color=COLORS["surface"], corner_radius=8)
+        row = ctk.CTkFrame(self.scroll, fg_color=COLORS["surface"], corner_radius=14)
         row.pack(fill="x", pady=5)
 
         icono = "📊" if entry["tipo"] == "excel" else "📄"
@@ -550,7 +784,7 @@ class BibliotecaFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(
             row, text=entry["fecha"],
-            font=ctk.CTkFont(size=12),
+            font=f(12),
             text_color=COLORS["text_dim"]
         ).pack(side="left", padx=8)
 
@@ -560,8 +794,8 @@ class BibliotecaFrame(ctk.CTkFrame):
             width=36, height=30,
             fg_color=COLORS["surface2"], hover_color=COLORS["error"],
             text_color=COLORS["text_dim"],
-            font=ctk.CTkFont(size=14),
-            corner_radius=6,
+            font=f(14),
+            corner_radius=12,
             command=lambda e=entry, r=row: self._borrar(e, r)
         ).pack(side="right", padx=(0, 8), pady=12)
 
@@ -572,7 +806,7 @@ class BibliotecaFrame(ctk.CTkFrame):
             fg_color=COLORS["surface2"], hover_color=COLORS["accent"],
             text_color=COLORS["text"],
             font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=6,
+            corner_radius=12,
             command=lambda e=entry: self._editar(e)
         ).pack(side="right", padx=(0, 6), pady=12)
 
@@ -583,7 +817,7 @@ class BibliotecaFrame(ctk.CTkFrame):
             fg_color=COLORS["accent"], hover_color=COLORS["accent_dim"],
             text_color="#000000",
             font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=6,
+            corner_radius=12,
             command=lambda p=entry["path"]: os.startfile(p) if os.path.exists(p) else None
         ).pack(side="right", padx=(0, 6), pady=12)
         # Botón mail
@@ -593,7 +827,7 @@ class BibliotecaFrame(ctk.CTkFrame):
             fg_color=COLORS["surface2"], hover_color=COLORS["accent"],
             text_color=COLORS["text"],
             font=ctk.CTkFont(size=12, weight="bold"),
-            corner_radius=6,
+            corner_radius=12,
             command=lambda e=entry: self._abrir_mail_popup(e)
         ).pack(side="right", padx=(0, 6), pady=12)
 
@@ -676,7 +910,7 @@ class GaleriaFrame(ctk.CTkFrame):
         self._build_ui()
 
     def _build_ui(self):
-        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=52, corner_radius=0)
+        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=72, corner_radius=0)
         header.pack(fill="x")
         header.pack_propagate(False)
 
@@ -685,12 +919,12 @@ class GaleriaFrame(ctk.CTkFrame):
             fg_color="transparent", hover_color=COLORS["surface2"],
             text_color=COLORS["text_dim"],
             command=self.master.mostrar_menu,
-            font=ctk.CTkFont(size=18)
+            font=f(18, True)
         ).pack(side="left", padx=8, pady=8)
 
         ctk.CTkLabel(
             header, text="Galería de Imágenes",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=f(15, True),
             text_color=COLORS["text"]
         ).pack(side="left", padx=4)
 
@@ -717,7 +951,7 @@ class GaleriaFrame(ctk.CTkFrame):
                 self.scroll,
                 text="No hay imágenes cargadas. ¡Subí una!",
                 text_color=COLORS["text_dim"],
-                font=ctk.CTkFont(size=14)
+                font=f(14)
             ).pack(pady=40)
             return
 
@@ -725,7 +959,7 @@ class GaleriaFrame(ctk.CTkFrame):
             self._agregar_imagen(nombre, datos)
 
     def _agregar_imagen(self, nombre, datos):
-        row = ctk.CTkFrame(self.scroll, fg_color=COLORS["surface"], corner_radius=8)
+        row = ctk.CTkFrame(self.scroll, fg_color=COLORS["surface"], corner_radius=14)
         row.pack(fill="x", pady=5)
 
         ctk.CTkLabel(
@@ -737,7 +971,7 @@ class GaleriaFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(
             row, text=f"/{nombre}",
-            font=ctk.CTkFont(size=11, family="Courier New"),
+            font=ctk.CTkFont(size=11, family=FONT_FAMILY),
             text_color=COLORS["accent"]
         ).pack(side="left", padx=8)
 
@@ -753,8 +987,8 @@ class GaleriaFrame(ctk.CTkFrame):
             width=36, height=30,
             fg_color=COLORS["surface2"], hover_color=COLORS["accent"],
             text_color=COLORS["text"],
-            font=ctk.CTkFont(size=14),
-            corner_radius=6,
+            font=f(14),
+            corner_radius=12,
             command=copiar_comando
         ).pack(side="right", padx=(0, 6), pady=12)
 
@@ -764,8 +998,8 @@ class GaleriaFrame(ctk.CTkFrame):
             width=36, height=30,
             fg_color=COLORS["surface2"], hover_color=COLORS["error"],
             text_color=COLORS["text_dim"],
-            font=ctk.CTkFont(size=14),
-            corner_radius=6,
+            font=f(14),
+            corner_radius=12,
             command=lambda n=nombre: self._borrar_imagen(n, row)
         ).pack(side="right", padx=(0, 6), pady=12)
 

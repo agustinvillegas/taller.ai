@@ -1,8 +1,6 @@
 import requests
 
 def obtener_precios_meli(prompt_original):
-    # Usamos el prompt original del usuario, no el mejorado
-    # Es corto y tiene exactamente lo que necesitamos
     palabras = [p.strip(",.") for p in prompt_original.split() if len(p) > 3]
     
     resultados = []
