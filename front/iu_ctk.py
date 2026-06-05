@@ -30,6 +30,8 @@ COLORS = {
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 EXCELS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "excels"))
 WORDS_DIR  = os.path.normpath(os.path.join(BASE_DIR, "..", "words"))
+GALLERY_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "gallery"))
+GALLERY_INDEX = os.path.join(GALLERY_DIR, "index.json")
 
 
 def escanear_biblioteca():
@@ -68,6 +70,22 @@ def cargar_json_documento(path_archivo):
     return None
 
 
+def cargar_galeria():
+    """Carga el índice de imágenes disponibles"""
+    os.makedirs(GALLERY_DIR, exist_ok=True)
+    if os.path.exists(GALLERY_INDEX):
+        with open(GALLERY_INDEX, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def guardar_galeria(galeria):
+    """Guarda el índice de imágenes"""
+    os.makedirs(GALLERY_DIR, exist_ok=True)
+    with open(GALLERY_INDEX, "w", encoding="utf-8") as f:
+        json.dump(galeria, f, ensure_ascii=False, indent=2)
+
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -92,6 +110,9 @@ class App(ctk.CTk):
 
     def mostrar_biblioteca(self):
         self.cambiar_frame(BibliotecaFrame)
+
+    def mostrar_galeria(self):
+        self.cambiar_frame(GaleriaFrame)
 
 
 class MenuFrame(ctk.CTkFrame):
@@ -139,6 +160,14 @@ class MenuFrame(ctk.CTkFrame):
             fg_color=COLORS["surface"], hover_color=COLORS["surface2"],
             text_color=COLORS["text_dim"],
             command=master.mostrar_biblioteca,
+            **btn_cfg
+        ).pack(pady=8)
+
+        ctk.CTkButton(
+            self, text="🖼️  Galería",
+            fg_color=COLORS["surface"], hover_color=COLORS["surface2"],
+            text_color=COLORS["text_dim"],
+            command=master.mostrar_galeria,
             **btn_cfg
         ).pack(pady=8)
 
@@ -253,6 +282,49 @@ class ChatFrame(ctk.CTkFrame):
         self.input_box.configure(state=state)
         self.btn_enviar.configure(state=state)
 
+    def _extraer_imagenes(self, prompt):
+        """Extrae referencias a imágenes del prompt (/nombreimg o /nombreimg:escala)
+        Ejemplos:
+        - /logo → logo con 12cm (default)
+        - /logo:8 → logo con 8cm
+        - /foto:6 → foto con 6cm
+        """
+        import re
+        galeria = cargar_galeria()
+        
+        # Buscar patrones /nombreimg o /nombreimg:numero
+        matches = re.findall(r'/(\w+)(?::(\d+))?', prompt)
+        imagenes = []
+        prompt_limpio = prompt
+        
+        for match in matches:
+            nombre_img = match[0]
+            escala_str = match[1]
+            
+            if nombre_img in galeria:
+                # Convertir escala a número, default 12
+                try:
+                    escala = int(escala_str) if escala_str else 12
+                    # Validar rango (5-18 cm recomendado)
+                    escala = max(5, min(18, escala))
+                except ValueError:
+                    escala = 12
+                
+                # Agregar con escala especificada
+                imagenes.append({
+                    "nombre": nombre_img,
+                    "path": galeria[nombre_img]["path"],
+                    "escala": escala
+                })
+                
+                # Remover referencia del prompt
+                if escala_str:
+                    prompt_limpio = re.sub(rf'/\b{nombre_img}\b:\d+', '', prompt_limpio)
+                else:
+                    prompt_limpio = re.sub(rf'/\b{nombre_img}\b(?::\d+)?', '', prompt_limpio)
+        
+        return imagenes, prompt_limpio.strip()
+
     def _saludo_inicial(self):
         if self.estado == "editando":
             nombre = os.path.splitext(os.path.basename(self.ultimo_path))[0]
@@ -283,12 +355,15 @@ class ChatFrame(ctk.CTkFrame):
             from back.ai import mejorar_prompt, buscar_datos_web, generacion_json, parsear_json, analizar_datos_web
             from back.config import instrucciones_excel, instrucciones_word
 
+            # Extraer imágenes del prompt del usuario
+            imagenes, prompt_limpio = self._extraer_imagenes(prompt)
+
             self._agregar_burbuja("Mejorando tu prompt...")
-            prompt_mejorado = mejorar_prompt(prompt, self.seleccion)
+            prompt_mejorado = mejorar_prompt(prompt_limpio, self.seleccion)
 
             if self.seleccion == "1":
                 self._agregar_burbuja("Buscando datos en la web...")
-                datos_web = buscar_datos_web(prompt)
+                datos_web = buscar_datos_web(prompt_mejorado)
                 self._agregar_burbuja("Analizando datos encontrados...")
                 datos_analizados = analizar_datos_web(prompt_mejorado, datos_web, "Excel")
                 prompt_final = f"{prompt_mejorado}\n\nVerified real data:\n{datos_analizados}"
@@ -303,6 +378,13 @@ class ChatFrame(ctk.CTkFrame):
                 self._agregar_burbuja("No pude generar un resultado válido. Intentá de nuevo.")
                 self._set_input(True)
                 return
+
+            # Agregar imágenes extraídas del prompt al JSON (solo para Word)
+            if imagenes and self.seleccion == "2":
+                data["imagenes"] = imagenes
+                # Crear mensaje con detalles de imágenes
+                detalles = ", ".join([f"{img['nombre']} ({img['escala']}cm)" for img in imagenes])
+                self._agregar_burbuja(f"✓ Imágenes añadidas: {detalles}")
 
             self.ultimo_json = data
             self.estado = "esperando_nombre"
@@ -354,7 +436,8 @@ class ChatFrame(ctk.CTkFrame):
             self._set_input(True)
             return
     
-    # ... resto del método igual
+        # Extraer imágenes del pedido del usuario
+        imagenes, pedido_limpio = self._extraer_imagenes(pedido)
 
         try:
             from back.ai import editar_json, parsear_json
@@ -367,7 +450,7 @@ class ChatFrame(ctk.CTkFrame):
             instrucciones = instrucciones_excel if self.seleccion == "1" else instrucciones_word
             contenido = editar_json(
                 json.dumps(self.ultimo_json, ensure_ascii=False),
-                pedido,
+                pedido_limpio,
                 instrucciones
             )
 
@@ -376,6 +459,12 @@ class ChatFrame(ctk.CTkFrame):
                 self._agregar_burbuja("No pude aplicar los cambios. Intentá describir la modificación de otra forma.")
                 self._set_input(True)
                 return
+
+            # Agregar o reemplazar imágenes si el usuario las especificó
+            if imagenes and self.seleccion == "2":
+                data["imagenes"] = imagenes
+                detalles = ", ".join([f"{img['nombre']} ({img['escala']}cm)" for img in imagenes])
+                self._agregar_burbuja(f"✓ Imágenes añadidas: {detalles}")
 
             self.ultimo_json = data
             path = self.ultimo_path
@@ -577,6 +666,174 @@ class BibliotecaFrame(ctk.CTkFrame):
             text_color="#000000",
             command=enviar
         ).pack(pady=10)
+
+
+class GaleriaFrame(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master, fg_color=COLORS["bg"])
+        self.master = master
+        self.galeria = cargar_galeria()
+        self._build_ui()
+
+    def _build_ui(self):
+        header = ctk.CTkFrame(self, fg_color=COLORS["surface"], height=52, corner_radius=0)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        ctk.CTkButton(
+            header, text="←", width=40, height=36,
+            fg_color="transparent", hover_color=COLORS["surface2"],
+            text_color=COLORS["text_dim"],
+            command=self.master.mostrar_menu,
+            font=ctk.CTkFont(size=18)
+        ).pack(side="left", padx=8, pady=8)
+
+        ctk.CTkLabel(
+            header, text="Galería de Imágenes",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=COLORS["text"]
+        ).pack(side="left", padx=4)
+
+        ctk.CTkButton(
+            header, text="+ Subir",
+            width=80, height=36,
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_dim"],
+            text_color="#000000",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._cargar_imagen
+        ).pack(side="right", padx=(0, 8), pady=8)
+
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color=COLORS["bg"])
+        self.scroll.pack(fill="both", expand=True, padx=16, pady=16)
+
+        self._cargar_imagenes()
+
+    def _cargar_imagenes(self):
+        for widget in self.scroll.winfo_children():
+            widget.destroy()
+
+        if not self.galeria:
+            ctk.CTkLabel(
+                self.scroll,
+                text="No hay imágenes cargadas. ¡Subí una!",
+                text_color=COLORS["text_dim"],
+                font=ctk.CTkFont(size=14)
+            ).pack(pady=40)
+            return
+
+        for nombre, datos in self.galeria.items():
+            self._agregar_imagen(nombre, datos)
+
+    def _agregar_imagen(self, nombre, datos):
+        row = ctk.CTkFrame(self.scroll, fg_color=COLORS["surface"], corner_radius=8)
+        row.pack(fill="x", pady=5)
+
+        ctk.CTkLabel(
+            row,
+            text=f"🖼️  {nombre}",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=COLORS["text"], anchor="w"
+        ).pack(side="left", padx=14, pady=12)
+
+        ctk.CTkLabel(
+            row, text=f"/{nombre}",
+            font=ctk.CTkFont(size=11, family="Courier New"),
+            text_color=COLORS["accent"]
+        ).pack(side="left", padx=8)
+
+        # Botón copiar comando
+        def copiar_comando():
+            import tkinter as tk
+            self.clipboard_clear()
+            self.clipboard_append(f"/{nombre}")
+            self.update()
+
+        ctk.CTkButton(
+            row, text="📋",
+            width=36, height=30,
+            fg_color=COLORS["surface2"], hover_color=COLORS["accent"],
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=14),
+            corner_radius=6,
+            command=copiar_comando
+        ).pack(side="right", padx=(0, 6), pady=12)
+
+        # Botón borrar
+        ctk.CTkButton(
+            row, text="🗑",
+            width=36, height=30,
+            fg_color=COLORS["surface2"], hover_color=COLORS["error"],
+            text_color=COLORS["text_dim"],
+            font=ctk.CTkFont(size=14),
+            corner_radius=6,
+            command=lambda n=nombre: self._borrar_imagen(n, row)
+        ).pack(side="right", padx=(0, 6), pady=12)
+
+    def _cargar_imagen(self):
+        from tkinter import filedialog
+        import shutil
+
+        ruta = filedialog.askopenfilename(
+            title="Selecciona una imagen",
+            filetypes=[("Imágenes", "*.jpg *.jpeg *.png *.bmp"), ("Todos", "*.*")]
+        )
+
+        if not ruta:
+            return
+
+        try:
+            # Intentar validar con PIL si está disponible
+            try:
+                from PIL import Image
+                img = Image.open(ruta)
+                img.verify()
+            except ImportError:
+                # Si PIL no está disponible, solo verificar que sea un archivo
+                pass
+            except Exception as e:
+                print(f"Archivo de imagen inválido: {e}")
+                return
+
+            # Obtener nombre sin extensión
+            nombre = os.path.splitext(os.path.basename(ruta))[0]
+
+            # Si el nombre ya existe, agregar número
+            nombre_original = nombre
+            contador = 1
+            while nombre in self.galeria:
+                nombre = f"{nombre_original}_{contador}"
+                contador += 1
+
+            # Crear directorio si no existe
+            os.makedirs(GALLERY_DIR, exist_ok=True)
+
+            # Copiar archivo
+            ext = os.path.splitext(ruta)[1]
+            path_dest = os.path.join(GALLERY_DIR, nombre + ext)
+            shutil.copy2(ruta, path_dest)
+
+            # Guardar en índice
+            self.galeria[nombre] = {
+                "path": path_dest,
+                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
+            }
+            guardar_galeria(self.galeria)
+
+            # Actualizar UI
+            self._cargar_imagenes()
+
+        except Exception as e:
+            print(f"Error al cargar imagen: {e}")
+
+    def _borrar_imagen(self, nombre, row):
+        if nombre in self.galeria:
+            path = self.galeria[nombre]["path"]
+            if os.path.exists(path):
+                os.remove(path)
+            del self.galeria[nombre]
+            guardar_galeria(self.galeria)
+            row.destroy()
+
 
 if __name__ == "__main__":
     app = App()

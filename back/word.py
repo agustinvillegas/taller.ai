@@ -3,10 +3,12 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import os
 
 def generar_word(data, output_path):
     titulo = data.get("titulo", "Documento")
     terminos = data.get("terminos", [])
+    imagenes_spec = data.get("imagenes", [])  # Lista de dicts con "nombre" y "escala"
 
     doc = Document()
 
@@ -66,6 +68,38 @@ def generar_word(data, output_path):
                 run_sub.font.name = "Arial"
 
                 restante = restante[primer_idx + len(primer_palabra):]
+
+    # Agregar imágenes si existen con su escala especificada
+    if imagenes_spec:
+        doc.add_paragraph()  # Espacio
+        
+        for img_spec in imagenes_spec:
+            # El img_spec puede ser un dict con "path" y "escala", o solo un path string
+            if isinstance(img_spec, dict):
+                img_path = img_spec.get("path", "")
+                escala = img_spec.get("escala", 12)
+            else:
+                img_path = img_spec
+                escala = 12
+            
+            if os.path.exists(img_path):
+                try:
+                    # Validar escala (5-18 cm recomendado)
+                    if not isinstance(escala, (int, float)):
+                        escala = 12
+                    escala = max(5, min(18, escala))  # Limitar entre 5 y 18
+                    
+                    img_par = doc.add_paragraph()
+                    img_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    doc.add_picture(img_path, width=Cm(escala))
+                    
+                    # Espacio después de imagen
+                    img_par = doc.add_paragraph()
+                    img_par.paragraph_format.space_after = Pt(12)
+                except Exception as e:
+                    print(f"Error al agregar imagen: {e}")
+            else:
+                print(f"Imagen no encontrada: {img_path}")
 
     doc.save(output_path)
     print("Word creado")

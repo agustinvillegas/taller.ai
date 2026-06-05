@@ -33,8 +33,7 @@ def formatear_excel(path, estilo):
             cell.border = border
 
     wb.save(path)
-
-            
+    wb.close()  # ✓ Cierra el workbook para liberar el archivo
 
 
 def aplicar_formulas(ws):
