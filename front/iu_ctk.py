@@ -6,6 +6,8 @@ from datetime import datetime
 from back.ai import analizar_datos_web
 from back.mail import enviar_mail
 import re
+import PIL
+
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -959,21 +961,111 @@ class GaleriaFrame(ctk.CTkFrame):
             self._agregar_imagen(nombre, datos)
 
     def _agregar_imagen(self, nombre, datos):
-        row = ctk.CTkFrame(self.scroll, fg_color=COLORS["surface"], corner_radius=14)
-        row.pack(fill="x", pady=5)
 
-        ctk.CTkLabel(
+        row = ctk.CTkFrame(
+            self.scroll,
+            fg_color=COLORS["surface"],
+            corner_radius=16,
+            border_width=1,
+            border_color=COLORS["border"]
+        )
+        row.pack(fill="x", pady=8, padx=4)
+
+
+    # preview
+        try:
+            img = PIL.Image.open(datos["path"])
+            img.thumbnail((90, 90))
+
+            preview = ctk.CTkImage(
+                light_image=img,
+                dark_image=img,
+                size=(90, 90)
+            )
+
+            img_label = ctk.CTkLabel(
+                row,
+                text="",
+                image=preview
+            )
+
+            img_label.image = preview
+            img_label.pack(
+                side="left",
+                padx=12,
+                pady=12
+            )
+
+        except Exception:
+            ctk.CTkLabel(
+                row,
+                text="🖼️",
+                font=f(35)
+            ).pack(
+                side="left",
+                padx=20
+            )
+
+
+        info = ctk.CTkFrame(
             row,
-            text=f"🖼️  {nombre}",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=COLORS["text"], anchor="w"
-        ).pack(side="left", padx=14, pady=12)
+            fg_color="transparent"
+        )
+        info.pack(
+            side="left",
+            fill="both",
+            expand=True,
+            padx=10
+        )
+
 
         ctk.CTkLabel(
-            row, text=f"/{nombre}",
-            font=ctk.CTkFont(size=11, family=FONT_FAMILY),
+            info,
+            text=nombre,
+            font=f(15, True),
+            text_color=COLORS["text"],
+            anchor="w"
+        ).pack(
+            anchor="w",
+            pady=(8,0)
+        )
+
+
+        ctk.CTkLabel(
+            info,
+            text=f"/{nombre}",
+            font=f(12),
             text_color=COLORS["accent"]
-        ).pack(side="left", padx=8)
+        ).pack(
+         anchor="w"
+        )
+
+
+        botones = ctk.CTkFrame(
+            row,
+            fg_color="transparent"
+        )
+        botones.pack(
+            side="right",
+            padx=10
+        )
+
+
+        ctk.CTkButton(
+            botones,
+            text="📋",
+            width=40,
+            command=lambda: self.clipboard_append(f"/{nombre}")
+        ).pack(pady=4)
+
+
+        ctk.CTkButton(
+            botones,
+            text="🗑",
+            width=40,
+            fg_color=COLORS["error"],
+            command=lambda n=nombre: self._borrar_imagen(n,row)
+        ).pack(pady=4)
 
         # Botón copiar comando
         def copiar_comando():
@@ -982,26 +1074,7 @@ class GaleriaFrame(ctk.CTkFrame):
             self.clipboard_append(f"/{nombre}")
             self.update()
 
-        ctk.CTkButton(
-            row, text="📋",
-            width=36, height=30,
-            fg_color=COLORS["surface2"], hover_color=COLORS["accent"],
-            text_color=COLORS["text"],
-            font=f(14),
-            corner_radius=12,
-            command=copiar_comando
-        ).pack(side="right", padx=(0, 6), pady=12)
 
-        # Botón borrar
-        ctk.CTkButton(
-            row, text="🗑",
-            width=36, height=30,
-            fg_color=COLORS["surface2"], hover_color=COLORS["error"],
-            text_color=COLORS["text_dim"],
-            font=f(14),
-            corner_radius=12,
-            command=lambda n=nombre: self._borrar_imagen(n, row)
-        ).pack(side="right", padx=(0, 6), pady=12)
 
     def _cargar_imagen(self):
         from tkinter import filedialog

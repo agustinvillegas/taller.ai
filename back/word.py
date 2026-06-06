@@ -1,16 +1,94 @@
-from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
 import os
 
+
+def agregar_indice(doc):
+    """
+    Inserta un índice automático de Word.
+    Word calcula las páginas cuando se actualiza.
+    """
+
+    p = doc.add_paragraph()
+
+    run = p.add_run()
+
+    begin = OxmlElement('w:fldChar')
+    begin.set(qn('w:fldCharType'), 'begin')
+
+    instr = OxmlElement('w:instrText')
+    instr.set(qn('xml:space'), 'preserve')
+    instr.text = 'TOC \\o "1-3" \\h'
+
+    end = OxmlElement('w:fldChar')
+    end.set(qn('w:fldCharType'), 'end')
+
+
+    run._r.append(begin)
+    run._r.append(instr)
+    run._r.append(end)
+
+
+
+def agregar_secciones(doc, secciones):
+
+    for sec in secciones:
+
+        titulo = sec.get("titulo", "")
+        nivel = sec.get("nivel", 1)
+
+        doc.add_heading(
+            titulo,
+            level=nivel
+        )
+
+        contenido = sec.get("contenido", "")
+
+        if contenido:
+            doc.add_paragraph(contenido)
+
+
+        for sub in sec.get("subsecciones", []):
+
+            agregar_secciones(
+                doc,
+                [sub]
+            )
+
+
+
 def generar_word(data, output_path):
-    titulo = data.get("titulo", "Documento")
-    terminos = data.get("terminos", [])
-    imagenes_spec = data.get("imagenes", [])  # Lista de dicts con "nombre" y "escala"
+
+    titulo = data.get(
+        "titulo",
+        "Documento"
+    )
+
+    terminos = data.get(
+        "terminos",
+        []
+    )
+
+    secciones = data.get(
+        "secciones",
+        []
+    )
+
+    imagenes_spec = data.get(
+        "imagenes",
+        []
+    )
+
 
     doc = Document()
+
+
+    # Márgenes
 
     for section in doc.sections:
         section.top_margin = Cm(2.5)
@@ -18,88 +96,218 @@ def generar_word(data, output_path):
         section.left_margin = Cm(3)
         section.right_margin = Cm(3)
 
+
+
+    # Título
+
     titulo_par = doc.add_paragraph()
+
     titulo_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
     titulo_par.paragraph_format.space_after = Pt(24)
-    run_titulo = titulo_par.add_run(titulo)
-    run_titulo.bold = True
-    run_titulo.font.size = Pt(24)
-    run_titulo.font.name = "Arial"
 
-    for t in terminos:
-        nombre = t.get("nombre", "")
-        definicion = t.get("definicion", "")
-        palabras_clave = [pk.lower() for pk in t.get("palabras_clave", [])]
 
-        par = doc.add_paragraph()
-        par.paragraph_format.space_before = Pt(10)
-        par.paragraph_format.space_after = Pt(10)
+    run = titulo_par.add_run(titulo)
 
-        run_nombre = par.add_run(nombre + ": ")
-        run_nombre.bold = True
-        run_nombre.font.size = Pt(12)
-        run_nombre.font.name = "Arial"
+    run.bold = True
+    run.font.size = Pt(24)
+    run.font.name = "Arial"
 
-        restante = definicion
-        while restante:
-            primer_idx = len(restante)
-            primer_palabra = None
 
-            for pk in palabras_clave:
-                idx = restante.lower().find(pk)
-                if idx != -1 and idx < primer_idx:
-                    primer_idx = idx
-                    primer_palabra = pk
 
-            if primer_palabra is None:
-                run = par.add_run(restante)
-                run.font.size = Pt(12)
-                run.font.name = "Arial"
-                break
-            else:
-                if primer_idx > 0:
-                    run = par.add_run(restante[:primer_idx])
+    # Índice
+
+    if data.get("indice", False):
+
+        doc.add_heading(
+            "Índice",
+            level=1
+        )
+
+        agregar_indice(doc)
+
+        doc.add_page_break()
+
+
+
+    # Documento estructurado
+
+    if secciones:
+
+        agregar_secciones(
+            doc,
+            secciones
+        )
+
+
+
+    # Formato antiguo de términos
+
+    if terminos:
+
+
+        for t in terminos:
+
+            nombre = t.get(
+                "nombre",
+                ""
+            )
+
+            definicion = t.get(
+                "definicion",
+                ""
+            )
+
+            palabras_clave = [
+                x.lower()
+                for x in t.get(
+                    "palabras_clave",
+                    []
+                )
+            ]
+
+
+            par = doc.add_paragraph()
+
+            par.paragraph_format.space_before = Pt(10)
+            par.paragraph_format.space_after = Pt(10)
+
+
+            titulo = par.add_run(
+                nombre + ": "
+            )
+
+            titulo.bold = True
+            titulo.font.size = Pt(12)
+            titulo.font.name = "Arial"
+
+
+
+            restante = definicion
+
+
+            while restante:
+
+                posicion = len(restante)
+                palabra = None
+
+
+                for pk in palabras_clave:
+
+                    idx = restante.lower().find(pk)
+
+                    if idx != -1 and idx < posicion:
+                        posicion = idx
+                        palabra = pk
+
+
+
+                if palabra is None:
+
+                    run = par.add_run(restante)
                     run.font.size = Pt(12)
-                    run.font.name = "Arial"
+                    break
 
-                run_sub = par.add_run(restante[primer_idx:primer_idx + len(primer_palabra)])
-                run_sub.underline = True
-                run_sub.font.size = Pt(12)
-                run_sub.font.name = "Arial"
 
-                restante = restante[primer_idx + len(primer_palabra):]
+                if posicion > 0:
 
-    # Agregar imágenes si existen con su escala especificada
+                    run = par.add_run(
+                        restante[:posicion]
+                    )
+
+                    run.font.size = Pt(12)
+
+
+
+                sub = par.add_run(
+                    restante[
+                        posicion:
+                        posicion + len(palabra)
+                    ]
+                )
+
+                sub.underline = True
+                sub.font.size = Pt(12)
+
+
+                restante = restante[
+                    posicion + len(palabra):
+                ]
+
+
+
+    # Imágenes
+
     if imagenes_spec:
-        doc.add_paragraph()  # Espacio
-        
+
+        doc.add_page_break()
+
+
         for img_spec in imagenes_spec:
-            # El img_spec puede ser un dict con "path" y "escala", o solo un path string
+
+
             if isinstance(img_spec, dict):
-                img_path = img_spec.get("path", "")
-                escala = img_spec.get("escala", 12)
+
+                img_path = img_spec.get(
+                    "path",
+                    ""
+                )
+
+                escala = img_spec.get(
+                    "escala",
+                    12
+                )
+
             else:
+
                 img_path = img_spec
                 escala = 12
-            
+
+
+
             if os.path.exists(img_path):
+
                 try:
-                    # Validar escala (5-18 cm recomendado)
-                    if not isinstance(escala, (int, float)):
-                        escala = 12
-                    escala = max(5, min(18, escala))  # Limitar entre 5 y 18
-                    
-                    img_par = doc.add_paragraph()
-                    img_par.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    doc.add_picture(img_path, width=Cm(escala))
-                    
-                    # Espacio después de imagen
-                    img_par = doc.add_paragraph()
-                    img_par.paragraph_format.space_after = Pt(12)
+
+                    escala = max(
+                        5,
+                        min(
+                            18,
+                            float(escala)
+                        )
+                    )
+
+
+                    p = doc.add_paragraph()
+
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+
+                    doc.add_picture(
+                        img_path,
+                        width=Cm(escala)
+                    )
+
+
                 except Exception as e:
-                    print(f"Error al agregar imagen: {e}")
+
+                    print(
+                        "Error imagen:",
+                        e
+                    )
+
+
             else:
-                print(f"Imagen no encontrada: {img_path}")
+
+                print(
+                    "Imagen no encontrada:",
+                    img_path
+                )
+
+
 
     doc.save(output_path)
-    print("Word creado")
+
+    print(
+        "Word creado"
+    )
