@@ -4,30 +4,35 @@ import re
 import requests
 from ddgs import DDGS
 
-def mejorar_prompt(prompt_usuario, tipo):
+
+def mejorar_prompt(prompt_usuario: str, tipo: str, contexto_empresa: str = "") -> str:
     tipo_str = "Excel con datos tabulares" if tipo == "1" else "Word con definiciones"
 
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": f"""
-You are an assistant that improves prompts for generating {tipo_str}.
+    sistema = f"""You are an assistant that improves prompts for generating {tipo_str}.
 Take the user input and rewrite it clearly, specifically and in detail.
 Add missing context, specify number of columns/terms if not mentioned.
 Always request detailed descriptions regardless of what the user says.
 The final output (Excel/Word content) must be in Spanish.
 Return ONLY the improved prompt, no explanations or comments.
-"""},
-            {"role": "user", "content": prompt_usuario}
+"""
+    contenido_usuario = prompt_usuario
+    if contexto_empresa:
+        contenido_usuario = f"{contexto_empresa}\n{prompt_usuario}"
+
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": sistema},
+            {"role": "user", "content": contenido_usuario}
         ],
         temperature=0.3
     )
     return completion.choices[0].message.content
 
 
-def generacion_json(prompt, instrucciones):
+def generacion_json(prompt: str, instrucciones: str) -> str:
     completion = client.chat.completions.create(
-        model="openai/gpt-oss-120b", # otra opcion valida es llama-3.3-70b-versatile otro es openai/gpt-oss-120b otra es groq/compound 
+        model="openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": instrucciones},
             {"role": "user", "content": prompt}
@@ -36,7 +41,8 @@ def generacion_json(prompt, instrucciones):
     )
     return completion.choices[0].message.content
 
-def parsear_json(texto):
+
+def parsear_json(texto: str) -> dict | None:
     try:
         return json.loads(texto)
     except json.JSONDecodeError:
@@ -55,28 +61,36 @@ def parsear_json(texto):
             pass
     return None
 
-def buscar_datos_web(prompt_original):
+
+def buscar_datos_web(prompt_original: str) -> str:
     completion = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
-            {"role": "system", "content": "Extract ONLY the product or brand names from the text. Return them separated by commas, nothing else. Example output: taragui, rosamonte, cbse"},
+            {"role": "system", "content": (
+                "Extract the main product, brand, or topic names from the text. "
+                "Return them separated by commas, nothing else. "
+                "Example output: televisores samsung, LG, electrodomesticos argentina"
+            )},
             {"role": "user", "content": prompt_original}
         ],
         temperature=0,
-        max_tokens=30
+        max_tokens=50
     )
     keywords = completion.choices[0].message.content.strip()
-    print("KEYWORDS:", keywords)
 
     resultados = []
-    for kw in [k.strip() for k in keywords.split(",")]:
-        results = DDGS().text(f"{kw} yerba mate Argentina", max_results=2)
-        for r in results:
-            resultados.append(r["body"])
+    for kw in [k.strip() for k in keywords.split(",") if k.strip()]:
+        try:
+            results = DDGS().text(f"{kw} Argentina precio", max_results=2)
+            for r in results:
+                resultados.append(r["body"])
+        except Exception:
+            pass
 
     return "\n".join(resultados[:6]) if resultados else "No se encontraron datos."
 
-def editar_json(json_anterior, pedido_usuario, instrucciones):
+
+def editar_json(json_anterior: str, pedido_usuario: str, instrucciones: str) -> str:
     completion = client.chat.completions.create(
         model="openai/gpt-oss-120b",
         messages=[
@@ -85,15 +99,18 @@ def editar_json(json_anterior, pedido_usuario, instrucciones):
         ],
         temperature=0
     )
-    resultado = completion.choices[0].message.content
-    print("JSON EDITADO:", resultado)  # ← temporal
-    return resultado
+    return completion.choices[0].message.content
 
-def interpretar_fin(respuesta_usuario):
+
+def interpretar_fin(respuesta_usuario: str) -> str:
     completion = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
-            {"role": "system", "content": "The user was asked if they want to modify a document. Based on their response, return ONLY 'si' if they want to make changes, or 'no' if they are done. Nothing else."},
+            {"role": "system", "content": (
+                "The user was asked if they want to modify a document. "
+                "Based on their response, return ONLY 'si' if they want to make changes, "
+                "or 'no' if they are done. Nothing else."
+            )},
             {"role": "user", "content": respuesta_usuario}
         ],
         temperature=0,
@@ -101,7 +118,8 @@ def interpretar_fin(respuesta_usuario):
     )
     return completion.choices[0].message.content.strip().lower()
 
-def analizar_datos_web(prompt_mejorado, datos_web, tipo_str):
+
+def analizar_datos_web(prompt_mejorado: str, datos_web: str, tipo_str: str) -> str:
     completion = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[

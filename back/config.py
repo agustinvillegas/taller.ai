@@ -1,6 +1,13 @@
+import os
 from groq import Groq
+from dotenv import load_dotenv
 
-client = Groq(api_key="dontsee")
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+load_dotenv(dotenv_path=_env_path)
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+client = Groq(api_key=GROQ_API_KEY)
 
 instrucciones_excel = """
 Respond ONLY with valid JSON.
@@ -21,9 +28,10 @@ Rules:
 - Only include "grafico" field if the user explicitly asks for a chart
 - "grafico" types: "bar", "line", "pie"
 - "columna_x" and "columna_y" must match exact column names in "columnas"
-- If a calculated column is needed, use EXACTLY these names: "Total", "Subtotal", "Promedio", "Cantidad"
-- "Total" = price × quantity
-- "Subtotal" = same as Total before taxes
+- If a calculated column is needed, use EXACTLY these names: "Total", "Subtotal", "IVA", "Promedio", "Cantidad"
+- "Total" = price × quantity (final price with taxes)
+- "Subtotal" = price before taxes
+- "IVA" = tax amount (21% of Subtotal)
 - "Promedio" = average of a numeric column
 - You MUST use the real data provided under "Real data found" as the primary source. Never invent information that contradicts it.
 - don't make up or say anything that isn't proven
@@ -58,45 +66,148 @@ User asks for: "table of yerba mate products with name, description and origin"
 """
 
 instrucciones_word = """
-Respond ONLY with valid JSON.
+CRITICAL: Output ONLY valid JSON. No markdown, no explanations, no extra text. ONLY JSON.
 
 Structure:
+
 {
-  "titulo": "Document title in Spanish",
+  "titulo": "Título del documento",
+
+  "secciones": [
+    {
+      "titulo": "Título de sección",
+      "contenido": "Texto completo de la sección",
+
+      "subsecciones": [
+        {
+          "titulo": "Título de subsección",
+          "contenido": "Texto completo"
+        }
+      ]
+    }
+  ],
+
   "terminos": [
     {
-      "nombre": "Concept name in Spanish",
-      "definicion": "Detailed definition in Spanish.",
-      "palabras_clave": ["word1", "word2"]
+      "nombre": "Nombre del término",
+      "definicion": "Descripción del término",
+      "palabras_clave": [
+        "palabra1",
+        "palabra2"
+      ]
+    }
+  ],
+
+  "imagenes": [
+    {
+      "nombre": "image_name",
+      "escala": 8
     }
   ]
 }
 
-Rules:
-- You MUST use the real data provided under "Real data found" as the primary source. Never invent information that contradicts it.
-- No explanations, no markdown, no extra text
-- Definitions must be clear, complete and academic, written in Spanish
-- palabras_clave are the most important terms within the definition (2-4 per concept)
-- Never repeat definitions
-- don't make up or say anything that isn't proven
 
-Example of ideal output:
-User asks for: "definitions of ente and sociedad simple"
+MANDATORY RULES:
+
+1. RESPOND ONLY WITH VALID JSON.
+
+2. Use "secciones" when the user requests:
+- informes
+- reportes
+- ensayos
+- manuales
+- guías
+- documentos largos
+- documentos con capítulos o partes
+
+3. "secciones" represents the actual document content.
+Every section MUST contain useful text in "contenido".
+
+4. Do NOT create empty sections.
+Do NOT use filler text like ".", "...", repeated characters, or placeholders.
+
+5. Use "subsecciones" only when they improve organization.
+Do NOT create unnecessary subsections.
+
+6. Do NOT create a manual index.
+The document generator will create Word headings and automatic tables of contents.
+
+7. Never include page numbers.
+
+8. "terminos" is only for:
+- lists
+- glossaries
+- catalogs
+- product definitions
+- concept collections
+
+9. If the user requests products or a catalog, use "terminos".
+
+10. If the user requests an informative document, prefer "secciones".
+
+11. All text MUST be in Spanish.
+
+12. Do NOT ask questions.
+
+13. Do NOT include additional fields.
+
+VALID EXAMPLE:
+
+User:
+"Necesito un informe sobre una empresa con introducción, productos y conclusión"
+
+Output:
 
 {
-  "titulo": "Conceptos Fundamentales de Organizaciones",
-  "terminos": [
+  "titulo": "Informe Empresarial",
+  "secciones": [
     {
-      "nombre": "Ente",
-      "definicion": "Un ente es toda entidad, física o jurídica, con capacidad para adquirir derechos y contraer obligaciones dentro del ordenamiento jurídico. En el ámbito económico, un ente es cualquier organización con existencia propia, independiente de las personas que la integran, capaz de realizar actos con efectos legales y patrimoniales.",
-      "palabras_clave": ["entidad", "derechos", "obligaciones", "ordenamiento jurídico"]
+      "titulo": "Introducción",
+      "contenido": "Texto desarrollado de introducción..."
     },
     {
-      "nombre": "Sociedad Simple",
-      "definicion": "La sociedad simple es la forma asociativa más básica del derecho privado argentino, caracterizada por la ausencia de personalidad jurídica propia y la responsabilidad ilimitada y solidaria de sus socios frente a terceros. Se constituye cuando dos o más personas acuerdan ejercer en común una actividad económica sin adoptar otro tipo societario.",
-      "palabras_clave": ["responsabilidad ilimitada", "personalidad jurídica", "socios", "actividad económica"]
+      "titulo": "Productos",
+      "contenido": "Descripción general...",
+      "subsecciones": [
+        {
+          "titulo": "Producto principal",
+          "contenido": "Descripción detallada..."
+        }
+      ]
+    },
+    {
+      "titulo": "Conclusión",
+      "contenido": "Cierre del informe..."
     }
-  ]
+  ],
+  "terminos": [],
+  "imagenes": []
 }
 
+
+VALID EXAMPLE:
+
+User:
+"Lista de productos de yerba mate con descripción"
+
+Output:
+
+{
+  "titulo": "Productos de yerba mate",
+  "secciones": [],
+  "terminos": [
+    {
+      "nombre": "Yerba Taragüi",
+      "definicion": "Descripción del producto.",
+      "palabras_clave": [
+        "yerba",
+        "mate"
+      ]
+    }
+  ],
+  "imagenes": []
+}
+
+
+CRITICAL: Start response with { and end with }. NOTHING ELSE.
 """
