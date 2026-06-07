@@ -135,13 +135,14 @@ class App(ctk.CTk):
     def mostrar_menu(self):
         self.cambiar_frame(MenuFrame)
 
-    def mostrar_chat(self, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None):
+    def mostrar_chat(self, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None, indice_inicial=None):
         self.cambiar_frame(
             ChatFrame,
             tipo=tipo,
             json_inicial=json_inicial,
             path_inicial=path_inicial,
-            prompt_inicial=prompt_inicial
+            prompt_inicial=prompt_inicial,
+            indice_inicial=indice_inicial
         )
 
     def mostrar_biblioteca(self):
@@ -685,12 +686,15 @@ class PlantillasFrame(ctk.CTkFrame):
     def _abrir_dialogo(self, titulo, campos, callback):
         top = ctk.CTkToplevel(self)
         top.title(titulo)
-        top.geometry("420x" + str(80 + len(campos) * 72))
+        top.geometry("420x" + str(100 + len(campos) * 72 + 160))
         top.configure(fg_color=COLORS["bg"])
         top.grab_set()
 
         ctk.CTkLabel(top, text=titulo, font=f(15, True),
-                     text_color=COLORS["text"]).pack(pady=(20, 12))
+                     text_color=COLORS["text"]).pack(pady=(20, 4))
+
+        ctk.CTkLabel(top, text="Todos los campos son opcionales.",
+                     font=f(11), text_color=COLORS["text_dim"]).pack(pady=(0, 12))
 
         entries = {}
         entry_cfg = dict(
@@ -699,25 +703,29 @@ class PlantillasFrame(ctk.CTkFrame):
         )
 
         form = ctk.CTkFrame(top, fg_color="transparent")
-        form.pack(fill="x", padx=24)
+        form.pack(fill="both", expand=True, padx=24)
 
         for key, label, placeholder in campos:
-            ctk.CTkLabel(form, text=label, font=f(11),
+            ctk.CTkLabel(form, text=f"{label} (opcional)", font=f(11),
                          text_color=COLORS["text_dim"], anchor="w").pack(fill="x")
             e = ctk.CTkEntry(form, placeholder_text=placeholder, **entry_cfg)
             e.pack(fill="x", pady=(2, 8))
             entries[key] = e
 
-        error = ctk.CTkLabel(top, text="", font=f(11), text_color=COLORS["error"])
-        error.pack()
+        ctk.CTkLabel(form, text="Anotación / notas adicionales (opcional)",
+                     font=f(11), text_color=COLORS["text_dim"], anchor="w").pack(fill="x", pady=(8, 0))
+        nota_box = ctk.CTkTextbox(
+            form, height=80,
+            fg_color=COLORS["surface2"], border_color=COLORS["border"], border_width=1,
+            text_color=COLORS["text"], font=f(12), corner_radius=10
+        )
+        nota_box.pack(fill="x", pady=(2, 0))
 
         def confirmar():
             valores = {k: v.get().strip() for k, v in entries.items()}
-            if any(not v for v in valores.values()):
-                error.configure(text="Completa todos los campos")
-                return
+            nota = nota_box.get("1.0", "end").strip()
             top.destroy()
-            callback(valores)
+            callback({**valores, "nota": nota})
 
         ctk.CTkButton(
             top, text="Generar documento",
@@ -727,95 +735,289 @@ class PlantillasFrame(ctk.CTkFrame):
             command=confirmar
         ).pack(padx=24, fill="x", pady=12)
 
+    def _abrir_dialogo_multi(self, titulo, layout_filas, campos_globales, callback):
+        top = ctk.CTkToplevel(self)
+        top.title(titulo)
+        top.geometry("900x650")
+        top.configure(fg_color=COLORS["bg"])
+        top.grab_set()
+
+        ctk.CTkLabel(top, text=titulo, font=f(15, True),
+                     text_color=COLORS["text"]).pack(pady=(20, 4))
+
+        ctk.CTkLabel(top, text="Tocá '+ Agregar' para sumar filas. Todos los campos son opcionales.",
+                     font=f(11), text_color=COLORS["text_dim"]).pack(pady=(0, 10))
+
+        global_entries = {}
+        entry_cfg = dict(
+            fg_color=COLORS["surface2"], border_color=COLORS["border"],
+            text_color=COLORS["text"], font=f(12), height=36, corner_radius=8
+        )
+
+        if campos_globales:
+            global_frame = ctk.CTkFrame(top, fg_color=COLORS["surface"], corner_radius=10)
+            global_frame.pack(fill="x", padx=24, pady=(0, 10))
+
+            for key, label, placeholder in campos_globales:
+                ctk.CTkLabel(global_frame, text=f"{label} (opcional)", font=f(11),
+                             text_color=COLORS["text_dim"], anchor="w").pack(fill="x", padx=12, pady=(8, 0))
+                e = ctk.CTkEntry(global_frame, placeholder_text=placeholder, **entry_cfg)
+                e.pack(fill="x", padx=12, pady=(2, 6))
+                global_entries[key] = e
+
+        if layout_filas:
+            header = ctk.CTkFrame(top, fg_color="transparent")
+            header.pack(fill="x", padx=24)
+            ncols_hdr = len(layout_filas[0]) + 1
+            for i in range(ncols_hdr):
+                header.grid_columnconfigure(i, weight=1, uniform="hdr")
+            for i, (_, lbl, _) in enumerate(layout_filas[0]):
+                ctk.CTkLabel(header, text=lbl, font=f(10, True), text_color=COLORS["text_dim"],
+                             anchor="w").grid(row=0, column=i, sticky="w", padx=8)
+
+        scroll = ctk.CTkScrollableFrame(top, fg_color=COLORS["bg"])
+        scroll.pack(fill="both", expand=True, padx=24, pady=8)
+
+        filas_data = []
+        nrows_layout = len(layout_filas)
+        ncols_top = len(layout_filas[0])
+
+        def agregar_fila():
+            item = ctk.CTkFrame(scroll, fg_color=COLORS["surface"], corner_radius=10)
+            item.pack(fill="x", pady=4)
+
+            for i in range(ncols_top + 1):
+                item.grid_columnconfigure(i, weight=1, uniform="it")
+
+            all_entries = {}
+
+            for i, (key, label, placeholder) in enumerate(layout_filas[0]):
+                e = ctk.CTkEntry(item, placeholder_text=placeholder, **entry_cfg)
+                e.grid(row=0, column=i, sticky="ew", padx=(8, 4), pady=(8, 4))
+                all_entries[key] = e
+
+            def eliminar():
+                filas_data.remove(fila)
+                item.destroy()
+
+            ctk.CTkButton(
+                item, text="X", width=32, height=32,
+                fg_color=COLORS["surface2"], hover_color=COLORS["error"],
+                text_color=COLORS["text_dim"], font=f(11, True), corner_radius=8,
+                command=eliminar
+            ).grid(row=0, column=ncols_top, padx=(4, 8), pady=(8, 4), rowspan=nrows_layout)
+
+            for r, fila_campos in enumerate(layout_filas[1:], start=1):
+                for i, (key, label, placeholder) in enumerate(fila_campos):
+                    e = ctk.CTkEntry(item, placeholder_text=placeholder, **entry_cfg)
+                    e.grid(row=r, column=i, sticky="ew", padx=(8, 4), pady=(0, 8))
+                    all_entries[key] = e
+
+            fila = {"frame": item, "entries": all_entries}
+            filas_data.append(fila)
+
+        btn_frame = ctk.CTkFrame(top, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=24, pady=4)
+
+        ctk.CTkButton(
+            btn_frame, text="+ Agregar",
+            fg_color=COLORS["surface2"], hover_color=COLORS["accent"],
+            text_color=COLORS["text"], font=f(12, True), corner_radius=10,
+            command=agregar_fila
+        ).pack(side="left")
+
+        nota_frame = ctk.CTkFrame(top, fg_color="transparent")
+        nota_frame.pack(fill="x", padx=24, pady=(8, 4))
+
+        ctk.CTkLabel(nota_frame, text="Anotación / notas adicionales (opcional)",
+                     font=f(11), text_color=COLORS["text_dim"], anchor="w").pack(fill="x")
+        nota_box = ctk.CTkTextbox(
+            nota_frame, height=60,
+            fg_color=COLORS["surface2"], border_color=COLORS["border"], border_width=1,
+            text_color=COLORS["text"], font=f(12), corner_radius=10
+        )
+        nota_box.pack(fill="x", pady=(2, 0))
+
+        def confirmar():
+            globals_data = {k: v.get().strip() for k, v in global_entries.items()}
+            items = []
+            for fila in filas_data:
+                item_data = {k: v.get().strip() for k, v in fila["entries"].items()}
+                if any(item_data.values()):
+                    items.append(item_data)
+            nota = nota_box.get("1.0", "end").strip()
+            top.destroy()
+            callback({**globals_data, "items": items, "nota": nota})
+
+        ctk.CTkButton(
+            top, text="Generar documento",
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_dim"],
+            text_color="#000", font=f(13, True),
+            height=42, corner_radius=12,
+            command=confirmar
+        ).pack(padx=24, fill="x", pady=12)
+
+        agregar_fila()
+
     def _dialogo_factura(self):
         self._abrir_dialogo(
             "Nueva Factura",
             [
-                ("cliente",       "Cliente",             "Nombre del cliente o empresa"),
-                ("items",         "Productos / servicios","Ej: 3 sillas $5000, 1 mesa $12000"),
-                ("condicion",     "Condicion de pago",   "Ej: contado, 30 dias, cuotas"),
+                ("cliente",       "Cliente",                "Nombre del cliente o empresa"),
+                ("items",         "Productos / servicios",  "Ej: 3 sillas $5000, 1 mesa $12000"),
+                ("condicion",     "Condicion de pago",      "Ej: contado, 30 dias, cuotas"),
             ],
             lambda v: self._lanzar(
                 "excel",
                 __import__("back.plantillas", fromlist=["prompt_factura"]).prompt_factura(
-                    v["cliente"], v["items"], v["condicion"], self.master.sesion
+                    cliente=v.get("cliente", ""),
+                    items=v.get("items", ""),
+                    condicion_pago=v.get("condicion", ""),
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
                 )
             )
         )
 
     def _dialogo_productos(self):
-        self._abrir_dialogo(
+        self._abrir_dialogo_multi(
             "Lista de Productos",
             [
-                ("categoria", "Categoria de productos", "Ej: electrodomesticos, indumentaria"),
-                ("cantidad",  "Cantidad de productos",  "Ej: 10"),
+                [
+                    ("nombre",      "Nombre",           "Ej: taragui 500g"),
+                    ("descripcion", "Descripción",      "—"),
+                    ("precio",      "Precio Unitario",  "Ej: 1500"),
+                    ("stock",       "Stock (cantidad)", "Ej: 20"),
+                ]
             ],
+            [("categoria", "Categoría de productos", "Ej: electrodomésticos, indumentaria")],
             lambda v: self._lanzar(
                 "excel",
                 __import__("back.plantillas", fromlist=["prompt_productos"]).prompt_productos(
-                    v["categoria"], int(v["cantidad"]) if v["cantidad"].isdigit() else 10,
-                    self.master.sesion
+                    productos=v.get("items", []),
+                    categoria=v.get("categoria", ""),
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
                 )
             )
         )
 
     def _dialogo_proveedores(self):
-        self._abrir_dialogo(
+        self._abrir_dialogo_multi(
             "Planilla de Proveedores",
             [
-                ("rubro", "Rubro de proveedores", "Ej: materiales de construccion, tecnologia"),
+                [
+                    ("nombre",     "Nombre",     "—"),
+                    ("cuit",       "CUIT",       "—"),
+                    ("contacto",   "Contacto",   "—"),
+                    ("telefono",   "Teléfono",   "—"),
+                    ("email",      "Email",      "—"),
+                ],
+                [
+                    ("productos",   "Productos que provee", "—"),
+                    ("condiciones", "Condiciones de pago",  "—"),
+                    ("tiempo",      "Tiempo de entrega",    "—"),
+                ]
             ],
+            [],
             lambda v: self._lanzar(
                 "excel",
                 __import__("back.plantillas", fromlist=["prompt_proveedores"]).prompt_proveedores(
-                    v["rubro"], self.master.sesion
+                    proveedores=v.get("items", []),
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
                 )
             )
         )
 
     def _dialogo_clientes(self):
-        from back.plantillas import prompt_clientes
-        self._lanzar("excel", prompt_clientes(self.master.sesion))
+        self._abrir_dialogo_multi(
+            "Base de Clientes",
+            [
+                [
+                    ("nombre",    "Nombre",       "—"),
+                    ("direccion", "Dirección",    "—"),
+                    ("dni",       "DNI/CUIT",     "—"),
+                    ("telefono",  "Teléfono",     "—"),
+                    ("email",     "Email",        "—"),
+                ],
+                [
+                    ("ciudad",    "Ciudad",       "—"),
+                    ("categoria", "Categoría",    "—"),
+                    ("contenido", "Contenido",    "—"),
+                ]
+            ],
+            [],
+            lambda v: self._lanzar(
+                "excel",
+                __import__("back.plantillas", fromlist=["prompt_clientes"]).prompt_clientes(
+                    clientes=v.get("items", []),
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
+                )
+            )
+        )
 
     def _dialogo_ventas(self):
-        self._abrir_dialogo(
+        self._abrir_dialogo_multi(
             "Planilla de Ventas",
             [
-                ("periodo", "Periodo", "Ej: enero 2025, primer trimestre 2025"),
+                [
+                    ("cliente",   "Cliente",  "—"),
+                    ("producto",  "Producto", "—"),
+                    ("vendedor",  "Vendedor", "—"),
+                ],
+                [
+                    ("cantidad", "Cantidad", "—"),
+                    ("precio",   "Precio",   "—"),
+                    ("fecha",    "Fecha (DD/MM/YYYY)", "—"),
+                ]
             ],
+            [("periodo", "Período", "Ej: enero 2025, primer trimestre 2025")],
             lambda v: self._lanzar(
                 "excel",
                 __import__("back.plantillas", fromlist=["prompt_ventas"]).prompt_ventas(
-                    v["periodo"], self.master.sesion
+                    ventas=v.get("items", []),
+                    periodo=v.get("periodo", ""),
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
                 )
             )
         )
 
     def _dialogo_informe(self):
-        self._abrir_dialogo(
+        self._abrir_dialogo_multi(
             "Informe Word",
-            [
-                ("tema",      "Tema del informe",        "Ej: analisis de mercado, plan de negocios"),
-                ("secciones", "Secciones adicionales",   "Opcional: ej: FODA, competencia (o dejalo vacio)"),
-            ],
-            lambda v: self._lanzar(
+            [[("seccion", "Sección", "Ej: Introducción")]],
+            [("tema", "Tema del informe", "Ej: análisis de mercado, plan de negocios")],
+            lambda v: self._lanzar_con_indice(
                 "word",
-                __import__("back.plantillas", fromlist=["prompt_informe_word"]).prompt_informe_word(
-                    v["tema"], v["secciones"], self.master.sesion
+                *__import__("back.plantillas", fromlist=["prompt_informe_word"]).prompt_informe_word(
+                    tema=v.get("tema", ""),
+                    secciones=[item["seccion"] for item in v.get("items", [])],
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
                 )
             )
         )
 
     def _dialogo_catalogo(self):
-        self._abrir_dialogo(
+        self._abrir_dialogo_multi(
             "Catalogo Word",
             [
-                ("tipo", "Tipo de productos / servicios", "Ej: muebles de oficina, software"),
+                [
+                    ("nombre",      "Nombre",         "—"),
+                    ("descripcion", "Descripción",    "—"),
+                    ("palabras",    "Palabras clave", "—"),
+                ]
             ],
+            [],
             lambda v: self._lanzar(
                 "word",
                 __import__("back.plantillas", fromlist=["prompt_catalogo_word"]).prompt_catalogo_word(
-                    v["tipo"], self.master.sesion
+                    productos=v.get("items", []),
+                    sesion=self.master.sesion,
+                    nota=v.get("nota", ""),
                 )
             )
         )
@@ -823,9 +1025,12 @@ class PlantillasFrame(ctk.CTkFrame):
     def _lanzar(self, tipo, prompt):
         self.master.mostrar_chat(tipo=tipo, prompt_inicial=prompt)
 
+    def _lanzar_con_indice(self, tipo, prompt, indice):
+        self.master.mostrar_chat(tipo=tipo, prompt_inicial=prompt, indice_inicial=indice)
+
 
 class ChatFrame(ctk.CTkFrame):
-    def __init__(self, master, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None):
+    def __init__(self, master, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None, indice_inicial=None):
         super().__init__(master, fg_color=COLORS["bg"])
         self.master = master
         self.tipo = tipo
@@ -833,6 +1038,7 @@ class ChatFrame(ctk.CTkFrame):
         self.ultimo_json = json_inicial
         self.ultimo_path = path_inicial
         self.prompt_inicial = prompt_inicial
+        self.indice_pendiente = indice_inicial
         self.historial_mensajes = []
 
         if json_inicial and path_inicial:
@@ -1177,6 +1383,9 @@ class ChatFrame(ctk.CTkFrame):
                 detalles = ", ".join([f"{img['nombre']} ({img['escala']}cm)" for img in imagenes])
                 self._agregar_burbuja(f"Imagenes anadidas: {detalles}")
 
+            if self.indice_pendiente:
+                data["indice"] = self.indice_pendiente
+
             self.ultimo_json = data
             self.estado = "esperando_nombre"
             self._agregar_burbuja("Listo! Que nombre le pones al archivo? (sin extension)")
@@ -1202,6 +1411,10 @@ class ChatFrame(ctk.CTkFrame):
                 df = pd.DataFrame(self.ultimo_json["datos"], columns=self.ultimo_json["columnas"])
                 df.to_excel(path, index=False)
                 formatear_excel(path, self.ultimo_json.get("estilo", {}))
+                wb = load_workbook(path)
+                aplicar_formulas(wb.active)
+                wb.save(path)
+                wb.close()
             else:
                 path = os.path.join(WORDS_DIR, nombre + ".docx")
                 generar_word(self.ultimo_json, path, empresa=empresa if empresa_completa(empresa) else None)
@@ -1276,7 +1489,8 @@ class ChatFrame(ctk.CTkFrame):
         try:
             from back.ai import editar_json, parsear_json
             from back.config import instrucciones_excel, instrucciones_word
-            from back.excel import formatear_excel
+            from back.excel import formatear_excel, aplicar_formulas
+            from openpyxl import load_workbook
             from back.word import generar_word
             import pandas as pd
 
@@ -1302,6 +1516,9 @@ class ChatFrame(ctk.CTkFrame):
                 detalles = ", ".join([f"{img['nombre']} ({img['escala']}cm)" for img in imagenes])
                 self._agregar_burbuja(f"Imagenes anadidas: {detalles}")
 
+            if self.indice_pendiente:
+                data["indice"] = self.indice_pendiente
+
             self.ultimo_json = data
             path = self.ultimo_path
 
@@ -1312,6 +1529,10 @@ class ChatFrame(ctk.CTkFrame):
                     df = pd.DataFrame(data["datos"], columns=data["columnas"])
                     df.to_excel(path, index=False)
                     formatear_excel(path, data.get("estilo", {}))
+                    wb = load_workbook(path)
+                    aplicar_formulas(wb.active)
+                    wb.save(path)
+                    wb.close()
                 else:
                     generar_word(data, path, empresa=empresa if empresa_completa(empresa) else None)
 

@@ -33,7 +33,13 @@ Rules:
 - "Subtotal" = price before taxes
 - "IVA" = tax amount (21% of Subtotal)
 - "Promedio" = average of a numeric column
-- You MUST use the real data provided under "Real data found" as the primary source. Never invent information that contradicts it.
+- You MUST use the real data provided under "Verified real data" as the PRIMARY source for any text field (descriptions, characteristics, observations) that the user did NOT provide. Quote, paraphrase, or summarize the verified information to fill empty description cells. Never invent information that contradicts it. NEVER leave description cells empty if the "Verified real data" section contains relevant descriptive information about that item.
+- If the user provided a value (text OR number) in the "PRODUCTOS" / "PROVEEDORES" / "CLIENTES" / "VENTAS" section, you MUST use it VERBATIM. Do not modify, round, or replace it.
+- If a value was NOT provided by the user AND there is no verified real data, the cell MUST be empty (string "" for text, 0 for numeric). NEVER fill cells with invented values, generic placeholders, or made-up data.
+- Price/monetary columns: USE the value provided by the user VERBATIM. If the user did not provide a price, set to 0. NEVER invent or estimate prices from web data or general knowledge.
+- Stock/quantity columns: USE the value provided by the user VERBATIM. If not provided, leave empty. NEVER invent stock.
+- Description text fields: use what the user provided. If the user did NOT provide a description, USE the "Verified real data" section to write a verified description. If neither source has information, leave EMPTY. NEVER write generic/invented descriptions.
+- DO NOT include a "Codigo de Producto" / "Codigo de Cliente" / "Codigo" column unless the user explicitly provided codes in the data. If no codes were provided by the user, OMIT that column entirely from both "columnas" and "datos" — do not even include an empty column.
 - don't make up or say anything that isn't proven
 - No explanations, no markdown, no extra text
 - columnas y datos must match in quantity
@@ -42,8 +48,15 @@ Rules:
 - Never repeat the same value in a description column
 - Style must be coherent with the requested Excel theme
 - All text content (column names, data) must be written in Spanish
-- NEVER fill price or monetary columns with values, always set them to 0. This is mandatory.
 - CRITICAL: Each row must represent ONE product. Never split products across columns by brand. All products go in the same columns regardless of brand.
+
+DATA RULES (CRITICAL — non-negotiable):
+- NUNCA inventes datos personales o identificables: nombres de personas, DNIs, CUITs, teléfonos, direcciones (físicas o de email), números de cuentas bancarias, ni nombres de empresas o personas reales.
+- Si el usuario no proveyó estos datos, el campo debe quedar VACÍO (string "" para texto, 0 para numéricos) o con un placeholder como "—" / "Sin datos". NUNCA inventes un valor para llenar el campo.
+- Los nombres de clientes, proveedores, empleados y empresas deben provenir exclusivamente del usuario o de los datos verificados de la búsqueda web. Si no hay datos, dejá el campo vacío.
+- SÍ podés generar: descripciones de productos, características técnicas, rubros, categorías, condiciones de pago, tipos de servicio y demás datos de conocimiento general.
+- Para información verificable (nombres de productos reales, datos de empresas existentes, etc.) usá los datos verificados de la web como fuente primaria. Si no hay datos verificados disponibles, NO inventes — dejá el campo vacío.
+- Si el contexto de empresa del usuario aporta datos, usalo como fuente de verdad para esa empresa.
 
 Example of ideal output:
 User asks for: "table of yerba mate products with name, description and origin"
@@ -109,6 +122,13 @@ Structure:
 
 MANDATORY RULES:
 
+0. DATA RULES (CRITICAL — non-negotiable):
+- NUNCA inventes datos personales o identificables: nombres de personas, DNIs, CUITs, teléfonos, direcciones (físicas o de email), números de cuentas bancarias, ni nombres de empresas o personas reales.
+- Si el usuario no proveyó estos datos, usá un placeholder como "—" o "Sin datos" dentro del texto. NUNCA inventes valores realistas para llenar baches.
+- Los nombres propios (personas, clientes, empresas, productos con marca real) deben venir del usuario o de datos verificados. Si no los hay, evitá mencionarlos o indicá "sin información disponible".
+- SÍ podés generar: descripciones de productos, características técnicas, rubros, categorías, procesos, metodologías, análisis y demás contenido de conocimiento general.
+- Si el contexto de empresa del usuario aporta datos, usalo como fuente de verdad para esa empresa.
+
 1. RESPOND ONLY WITH VALID JSON.
 
 2. Use "secciones" when the user requests:
@@ -150,6 +170,8 @@ The document generator will create Word headings and automatic tables of content
 12. Do NOT ask questions.
 
 13. Do NOT include additional fields.
+
+14. Do NOT include an "indice" field. The document generator will automatically insert a table of contents (TOC) in every Word document.
 
 VALID EXAMPLE:
 

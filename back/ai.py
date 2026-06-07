@@ -81,9 +81,14 @@ def buscar_datos_web(prompt_original: str) -> str:
     resultados = []
     for kw in [k.strip() for k in keywords.split(",") if k.strip()]:
         try:
-            results = DDGS().text(f"{kw} Argentina precio", max_results=2)
+            results = DDGS().text(f"{kw} Argentina", max_results=2)
             for r in results:
-                resultados.append(r["body"])
+                titulo = r.get("title", "")
+                cuerpo = r.get("body", "")
+                if titulo and cuerpo:
+                    resultados.append(f"{titulo}: {cuerpo}")
+                else:
+                    resultados.append(titulo or cuerpo)
         except Exception:
             pass
 
@@ -124,17 +129,18 @@ def analizar_datos_web(prompt_mejorado: str, datos_web: str, tipo_str: str) -> s
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": f"""
-You are analyzing web search results to extract reliable information for generating a {tipo_str}.
+You are analyzing web search results to extract reliable DESCRIPTIVE information for generating a {tipo_str}.
+Focus on preserving descriptive content: product features, characteristics, typical uses, origin, and other factual details that could be used to fill description cells in the document.
 Think step by step:
-1. What information from the search results is reliable and specific?
-2. What is missing or unclear?
+1. What descriptive information from the search results is reliable and specific?
+2. What facts (features, specs, origin, typical use) could be used to describe each item?
 3. What should NOT be included because it's uncertain or contradictory?
-Summarize only the verified, concrete facts. Be brief and direct.
-Keep the summary flat and simple. Do not organize by brand or category. Just list the key facts found.
+Summarize the verified descriptive facts. Be informative but concise — keep the actual descriptions, features and characteristics in the summary so they can be used as descriptions.
+Keep the summary flat and simple. Do not organize by brand or category. Just list the key descriptive facts found.
 """},
             {"role": "user", "content": f"Prompt: {prompt_mejorado}\n\nSearch results:\n{datos_web}"}
         ],
         temperature=0,
-        max_tokens=200
+        max_tokens=300
     )
     return completion.choices[0].message.content

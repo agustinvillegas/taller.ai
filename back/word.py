@@ -122,8 +122,20 @@ def generar_word(data: dict, output_path: str, empresa: dict = None):
     run.font.size = Pt(24)
     run.font.name = "Arial"
 
-    if data.get("indice", False):
+    entries = data.get("indice", [])
+    if entries:
         doc.add_heading("Indice", level=1)
+        for e in entries:
+            nivel = e.get("nivel", 1)
+            par = doc.add_paragraph()
+            par.paragraph_format.left_indent = Cm(0.5 * (nivel - 1))
+            par.paragraph_format.space_after = Pt(2)
+            par.paragraph_format.space_before = Pt(2)
+            run = par.add_run(e.get("titulo", ""))
+            run.font.size = Pt(11)
+            if nivel == 1:
+                run.bold = True
+        doc.add_paragraph()
         agregar_indice(doc)
         doc.add_page_break()
 

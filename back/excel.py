@@ -18,6 +18,16 @@ def _buscar_col(headers, keywords):
     return None
 
 
+def _buscar_col_exact(headers, keyword):
+    keyword = keyword.lower()
+    for i, h in enumerate(headers):
+        if h:
+            hl = h.lower().strip()
+            if hl == keyword or hl.endswith(" " + keyword):
+                return i + 1
+    return None
+
+
 def formatear_excel(path, estilo):
     wb = load_workbook(path)
     ws = wb.active
@@ -77,12 +87,15 @@ def formatear_excel(path, estilo):
 def aplicar_formulas(ws):
     headers = [cell.value for cell in ws[1]]
 
-    col_total    = _buscar_col(headers, _KEYWORDS_TOTAL)
-    col_subtotal = _buscar_col(headers, ["subtotal"])
+    col_total    = _buscar_col_exact(headers, "total")
+    col_subtotal = _buscar_col_exact(headers, "subtotal")
     col_precio   = _buscar_col(headers, _KEYWORDS_PRECIO_U)
     col_cantidad = _buscar_col(headers, _KEYWORDS_CANTIDAD)
     col_iva      = _buscar_col(headers, _KEYWORDS_IVA)
     col_promedio = _buscar_col(headers, _KEYWORDS_PROMEDIO)
+
+    if not (col_subtotal or col_iva or col_total or col_promedio):
+        return
 
     ultima_fila = ws.max_row
 
@@ -114,13 +127,14 @@ def aplicar_formulas(ws):
 
     bold_font = Font(bold=True, size=11)
 
-    for col_idx, label in [
-        (col_subtotal, "SUBTOTAL"),
-        (col_iva,      "IVA TOTAL"),
-        (col_total,    "TOTAL"),
-        (col_cantidad, None),
-        (col_promedio, "PROMEDIO"),
-    ]:
+    cols_con_suma = [c for c in (col_subtotal, col_iva, col_total, col_cantidad, col_promedio) if c]
+    if cols_con_suma:
+        primera_col = min(cols_con_suma)
+        if primera_col > 1:
+            ws.cell(row=fila_suma, column=primera_col - 1).value = "TOTALES"
+            ws.cell(row=fila_suma, column=primera_col - 1).font = bold_font
+
+    for col_idx in (col_subtotal, col_iva, col_total, col_cantidad, col_promedio):
         if not col_idx:
             continue
         letra = get_column_letter(col_idx)
@@ -132,8 +146,3 @@ def aplicar_formulas(ws):
 
         ws.cell(row=fila_suma, column=col_idx).font = bold_font
         ws.cell(row=fila_suma, column=col_idx).number_format = '$#,##0.00'
-
-        if label and col_idx > 1:
-            label_cell = ws.cell(row=fila_suma, column=col_idx - 1)
-            label_cell.value = label
-            label_cell.font = bold_font
