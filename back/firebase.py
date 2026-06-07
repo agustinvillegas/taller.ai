@@ -4,12 +4,9 @@ import base64
 from datetime import datetime
 from urllib.parse import quote
 import requests
-from dotenv import load_dotenv
+from back.config import FIREBASE_DATABASE_URL
 
-_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
-load_dotenv(dotenv_path=_env_path)
-
-FIREBASE_URL = os.getenv("FIREBASE_URL", "").rstrip("/")
+FIREBASE_URL = FIREBASE_DATABASE_URL.rstrip("/")
 
 
 def _url(ruta: str) -> str:

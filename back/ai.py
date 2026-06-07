@@ -5,7 +5,7 @@ import requests
 from ddgs import DDGS
 
 
-def mejorar_prompt(prompt_usuario: str, tipo: str, contexto_empresa: str = "") -> str:
+def mejorar_prompt(prompt_usuario: str, tipo: str) -> str:
     tipo_str = "Excel con datos tabulares" if tipo == "1" else "Word con definiciones"
 
     sistema = f"""You are an assistant that improves prompts for generating {tipo_str}.
@@ -15,15 +15,11 @@ Always request detailed descriptions regardless of what the user says.
 The final output (Excel/Word content) must be in Spanish.
 Return ONLY the improved prompt, no explanations or comments.
 """
-    contenido_usuario = prompt_usuario
-    if contexto_empresa:
-        contenido_usuario = f"{contexto_empresa}\n{prompt_usuario}"
-
     completion = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": sistema},
-            {"role": "user", "content": contenido_usuario}
+            {"role": "user", "content": prompt_usuario}
         ],
         temperature=0.3
     )

@@ -1,13 +1,73 @@
 import os
+import sys
+import json
 from groq import Groq
 from dotenv import load_dotenv
 
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
 load_dotenv(dotenv_path=_env_path)
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+# === Hardcoded defaults (replace these before building .exe) ===
+GROQ_API_KEY_DEFAULT = os.getenv("GROQ_API_KEY", "")
+FIREBASE_DATABASE_URL_DEFAULT = os.getenv("FIREBASE_URL", "")
 
-client = Groq(api_key=GROQ_API_KEY)
+# === Runtime values (loaded from config file or defaults) ===
+GROQ_API_KEY = ""
+FIREBASE_DATABASE_URL = ""
+client = None
+
+
+def _get_config_dir():
+    """Directory where the .exe or main.py lives (for taller_ai_config.json)."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _load_config():
+    global GROQ_API_KEY, FIREBASE_DATABASE_URL, client
+
+    # Priority: 1) env var (dev mode), 2) default constant, 3) config file override
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY") or GROQ_API_KEY_DEFAULT
+    FIREBASE_DATABASE_URL = os.getenv("FIREBASE_URL") or FIREBASE_DATABASE_URL_DEFAULT
+
+    config_path = os.path.join(_get_config_dir(), "taller_ai_config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            if cfg.get("groq_api_key"):
+                GROQ_API_KEY = cfg["groq_api_key"]
+            if cfg.get("firebase_database_url"):
+                FIREBASE_DATABASE_URL = cfg["firebase_database_url"]
+        except Exception:
+            pass
+
+    if GROQ_API_KEY:
+        client = Groq(api_key=GROQ_API_KEY)
+    else:
+        client = Groq(api_key="")
+
+
+def save_config(groq_api_key=None, firebase_database_url=None):
+    """Save config to taller_ai_config.json (next to .exe in production, next to project in dev)."""
+    config_path = os.path.join(_get_config_dir(), "taller_ai_config.json")
+    cfg = {}
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            pass
+    if groq_api_key is not None:
+        cfg["groq_api_key"] = groq_api_key
+    if firebase_database_url is not None:
+        cfg["firebase_database_url"] = firebase_database_url
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+_load_config()
 
 instrucciones_excel = """
 Respond ONLY with valid JSON.

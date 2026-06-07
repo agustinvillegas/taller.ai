@@ -217,6 +217,17 @@ class LoginFrame(ctk.CTkFrame):
 
         self._mostrar_unirse()
 
+        self.btn_config = ctk.CTkButton(
+            self, text="\u2699",
+            width=36, height=36, corner_radius=18,
+            fg_color=COLORS["surface2"],
+            text_color=COLORS["text_dim"],
+            hover_color=COLORS["surface"],
+            font=f(16),
+            command=self._abrir_config
+        )
+        self.btn_config.place(relx=1.0, rely=1.0, x=-16, y=-16, anchor="se")
+
     def _limpiar_form(self):
         for w in self.form_container.winfo_children():
             w.destroy()
@@ -309,6 +320,67 @@ class LoginFrame(ctk.CTkFrame):
         self.master.sesion = resultado
         guardar_sesion(resultado["codigo"], resultado["nombre_grupo"], resultado.get("empresa", {}))
         self.master.mostrar_menu()
+
+    def _abrir_config(self):
+        from back.config import GROQ_API_KEY, FIREBASE_DATABASE_URL, save_config
+
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Configuracion")
+        dialog.geometry("500x300")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.configure(fg_color=COLORS["bg"])
+
+        ctk.CTkLabel(
+            dialog, text="Configuracion de API",
+            font=f(18, True), text_color=COLORS["text"]
+        ).pack(pady=(24, 20))
+
+        frame = ctk.CTkFrame(dialog, fg_color=COLORS["surface"], corner_radius=14)
+        frame.pack(fill="both", expand=True, padx=24, pady=(0, 16))
+
+        entry_cfg = dict(
+            fg_color=COLORS["surface2"], border_color=COLORS["border"],
+            text_color=COLORS["text"], font=f(13), height=40, corner_radius=10
+        )
+
+        ctk.CTkLabel(frame, text="Clave de API de Groq", font=f(12),
+                     text_color=COLORS["text_dim"], anchor="w").pack(fill="x", padx=16, pady=(16, 2))
+        entry_key = ctk.CTkEntry(frame, placeholder_text="gsk_...", **entry_cfg)
+        entry_key.insert(0, GROQ_API_KEY)
+        entry_key.pack(fill="x", padx=16, pady=(0, 12))
+
+        ctk.CTkLabel(frame, text="URL de Firebase", font=f(12),
+                     text_color=COLORS["text_dim"], anchor="w").pack(fill="x", padx=16, pady=(4, 2))
+        entry_url = ctk.CTkEntry(frame, placeholder_text="https://...firebaseio.com", **entry_cfg)
+        entry_url.insert(0, FIREBASE_DATABASE_URL)
+        entry_url.pack(fill="x", padx=16, pady=(0, 16))
+
+        info = ctk.CTkLabel(frame, text="Los cambios requieren reiniciar la aplicacion.",
+                            font=f(11), text_color=COLORS["warning"])
+        info.pack(padx=16, pady=(0, 12))
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=24, pady=(0, 20))
+
+        ctk.CTkButton(
+            btn_frame, text="Cancelar",
+            fg_color=COLORS["surface2"], text_color=COLORS["text"],
+            command=dialog.destroy
+        ).pack(side="left", padx=(0, 8), expand=True)
+
+        def _guardar():
+            save_config(
+                groq_api_key=entry_key.get().strip(),
+                firebase_database_url=entry_url.get().strip()
+            )
+            dialog.destroy()
+
+        ctk.CTkButton(
+            btn_frame, text="Guardar",
+            fg_color=COLORS["accent"], text_color="#000",
+            command=_guardar
+        ).pack(side="right", padx=(8, 0), expand=True)
 
     def _crear(self):
         nombre   = self.entry_nombre.get().strip()
@@ -1370,10 +1442,13 @@ class ChatFrame(ctk.CTkFrame):
             contexto_empresa = get_contexto_empresa(self.master.sesion)
 
             self._agregar_burbuja("Mejorando tu prompt...")
-            prompt_mejorado = mejorar_prompt(prompt_limpio, self.seleccion, contexto_empresa)
+            prompt_mejorado = mejorar_prompt(prompt_limpio, self.seleccion)
 
             if contexto_hist:
                 prompt_mejorado = contexto_hist + prompt_mejorado
+
+            if contexto_empresa:
+                prompt_mejorado = contexto_empresa + prompt_mejorado
 
             if self.seleccion == "1":
                 self._agregar_burbuja("Buscando datos en la web...")
