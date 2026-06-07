@@ -5,6 +5,7 @@ CAMPOS_EMPRESA = [
     ("direccion",   "Direccion"),
     ("responsable", "Responsable / dueno"),
     ("telefono",    "Telefono de contacto"),
+    ("email",       "Email de contacto"),
 ]
 
 
@@ -38,6 +39,8 @@ def get_contexto_empresa(sesion: dict | None) -> str:
         partes.append(f'responsable {empresa["responsable"]}')
     if empresa.get("telefono"):
         partes.append(f'telefono {empresa["telefono"]}')
+    if empresa.get("email"):
+        partes.append(f'email {empresa["email"]}')
 
     if not partes:
         return ""
@@ -45,12 +48,3 @@ def get_contexto_empresa(sesion: dict | None) -> str:
     return "CONTEXTO DE EMPRESA: " + ", ".join(partes) + ".\n"
 
 
-def get_encabezado_empresa(empresa: dict) -> str:
-    partes = []
-    if empresa.get("nombre"):
-        partes.append(empresa["nombre"])
-    if empresa.get("rubro"):
-        partes.append(empresa["rubro"].capitalize())
-    if empresa.get("cuit"):
-        partes.append(f'CUIT {empresa["cuit"]}')
-    return " | ".join(partes) if partes else ""

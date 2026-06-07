@@ -40,6 +40,13 @@ def agregar_secciones(doc, secciones):
             agregar_secciones(doc, [sub])
 
 
+def _set_update_fields(doc):
+    settings = doc.settings.element
+    update_fields = OxmlElement('w:updateFields')
+    update_fields.set(qn('w:val'), 'true')
+    settings.append(update_fields)
+
+
 def _agregar_pie_pagina(doc, texto: str):
     for section in doc.sections:
         footer = section.footer
@@ -94,6 +101,8 @@ def generar_word(data: dict, output_path: str, empresa: dict = None):
             datos_extra.append(empresa["direccion"])
         if empresa.get("telefono"):
             datos_extra.append(f"Tel: {empresa['telefono']}")
+        if empresa.get("email"):
+            datos_extra.append(f"Email: {empresa['email']}")
         if datos_extra:
             p_datos = doc.add_paragraph()
             p_datos.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -101,6 +110,14 @@ def generar_word(data: dict, output_path: str, empresa: dict = None):
             run_datos.font.size = Pt(10)
             run_datos.font.name = "Arial"
             run_datos.font.color.rgb = RGBColor(0x60, 0x60, 0x60)
+
+        if empresa.get("responsable"):
+            p_resp = doc.add_paragraph()
+            p_resp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run_resp = p_resp.add_run(f"A nombre de: {empresa['responsable']}")
+            run_resp.font.size = Pt(10)
+            run_resp.font.name = "Arial"
+            run_resp.font.color.rgb = RGBColor(0x60, 0x60, 0x60)
 
         p_fecha = doc.add_paragraph()
         p_fecha.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -122,22 +139,9 @@ def generar_word(data: dict, output_path: str, empresa: dict = None):
     run.font.size = Pt(24)
     run.font.name = "Arial"
 
-    entries = data.get("indice", [])
-    if entries:
-        doc.add_heading("Indice", level=1)
-        for e in entries:
-            nivel = e.get("nivel", 1)
-            par = doc.add_paragraph()
-            par.paragraph_format.left_indent = Cm(0.5 * (nivel - 1))
-            par.paragraph_format.space_after = Pt(2)
-            par.paragraph_format.space_before = Pt(2)
-            run = par.add_run(e.get("titulo", ""))
-            run.font.size = Pt(11)
-            if nivel == 1:
-                run.bold = True
-        doc.add_paragraph()
-        agregar_indice(doc)
-        doc.add_page_break()
+    doc.add_heading("Indice", level=1)
+    agregar_indice(doc)
+    doc.add_page_break()
 
     if secciones:
         agregar_secciones(doc, secciones)
@@ -205,5 +209,6 @@ def generar_word(data: dict, output_path: str, empresa: dict = None):
             else:
                 print("Imagen no encontrada:", img_path)
 
+    _set_update_fields(doc)
     doc.save(output_path)
     print("Word creado:", output_path)

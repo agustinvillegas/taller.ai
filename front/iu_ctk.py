@@ -6,7 +6,7 @@ from datetime import datetime
 from back.ai import analizar_datos_web
 from back.mail import enviar_mail
 from back.sesion import cargar_sesion, guardar_sesion, cerrar_sesion, actualizar_empresa_sesion
-from back.empresa import CAMPOS_EMPRESA, empresa_completa, get_contexto_empresa, get_encabezado_empresa
+from back.empresa import CAMPOS_EMPRESA, empresa_completa, get_contexto_empresa
 import re
 import PIL
 
@@ -135,14 +135,13 @@ class App(ctk.CTk):
     def mostrar_menu(self):
         self.cambiar_frame(MenuFrame)
 
-    def mostrar_chat(self, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None, indice_inicial=None):
+    def mostrar_chat(self, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None):
         self.cambiar_frame(
             ChatFrame,
             tipo=tipo,
             json_inicial=json_inicial,
             path_inicial=path_inicial,
-            prompt_inicial=prompt_inicial,
-            indice_inicial=indice_inicial
+            prompt_inicial=prompt_inicial
         )
 
     def mostrar_biblioteca(self):
@@ -523,13 +522,33 @@ class EmpresaFrame(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(scroll, text="", font=f(12))
         self.status_label.pack(pady=(16, 4))
 
+        btn_row = ctk.CTkFrame(scroll, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(4, 20))
+
         ctk.CTkButton(
-            scroll, text="Guardar",
+            btn_row, text="Guardar",
             fg_color=COLORS["accent"], hover_color=COLORS["accent_dim"],
             text_color="#000", font=f(14, True),
             height=46, corner_radius=12,
             command=self._guardar
-        ).pack(fill="x", pady=(4, 20))
+        ).pack(side="left", expand=True, fill="x", padx=(0, 6))
+
+        ctk.CTkButton(
+            btn_row, text="Limpiar",
+            fg_color=COLORS["surface2"], hover_color=COLORS["error"],
+            text_color=COLORS["text"], font=f(14, True),
+            height=46, corner_radius=12,
+            command=self._limpiar
+        ).pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+    def _limpiar(self):
+        for entry in self.entries.values():
+            entry.delete(0, "end")
+        empresa = {campo: "" for campo, _ in CAMPOS_EMPRESA}
+        actualizar_empresa_sesion(empresa)
+        if self.master.sesion:
+            self.master.sesion["empresa"] = empresa
+        self.status_label.configure(text="Datos borrados", text_color=COLORS["warning"])
 
     def _guardar(self):
         empresa = {campo: self.entries[campo].get().strip() for campo, _ in CAMPOS_EMPRESA}
@@ -686,7 +705,7 @@ class PlantillasFrame(ctk.CTkFrame):
     def _abrir_dialogo(self, titulo, campos, callback):
         top = ctk.CTkToplevel(self)
         top.title(titulo)
-        top.geometry("420x" + str(100 + len(campos) * 72 + 160))
+        top.geometry("420x" + str(150 + len(campos) * 72 + 160))
         top.configure(fg_color=COLORS["bg"])
         top.grab_set()
 
@@ -738,7 +757,7 @@ class PlantillasFrame(ctk.CTkFrame):
     def _abrir_dialogo_multi(self, titulo, layout_filas, campos_globales, callback):
         top = ctk.CTkToplevel(self)
         top.title(titulo)
-        top.geometry("900x650")
+        top.geometry("900x700")
         top.configure(fg_color=COLORS["bg"])
         top.grab_set()
 
@@ -990,9 +1009,9 @@ class PlantillasFrame(ctk.CTkFrame):
             "Informe Word",
             [[("seccion", "Sección", "Ej: Introducción")]],
             [("tema", "Tema del informe", "Ej: análisis de mercado, plan de negocios")],
-            lambda v: self._lanzar_con_indice(
+            lambda v: self._lanzar(
                 "word",
-                *__import__("back.plantillas", fromlist=["prompt_informe_word"]).prompt_informe_word(
+                __import__("back.plantillas", fromlist=["prompt_informe_word"]).prompt_informe_word(
                     tema=v.get("tema", ""),
                     secciones=[item["seccion"] for item in v.get("items", [])],
                     sesion=self.master.sesion,
@@ -1025,12 +1044,9 @@ class PlantillasFrame(ctk.CTkFrame):
     def _lanzar(self, tipo, prompt):
         self.master.mostrar_chat(tipo=tipo, prompt_inicial=prompt)
 
-    def _lanzar_con_indice(self, tipo, prompt, indice):
-        self.master.mostrar_chat(tipo=tipo, prompt_inicial=prompt, indice_inicial=indice)
-
 
 class ChatFrame(ctk.CTkFrame):
-    def __init__(self, master, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None, indice_inicial=None):
+    def __init__(self, master, tipo, json_inicial=None, path_inicial=None, prompt_inicial=None):
         super().__init__(master, fg_color=COLORS["bg"])
         self.master = master
         self.tipo = tipo
@@ -1038,7 +1054,6 @@ class ChatFrame(ctk.CTkFrame):
         self.ultimo_json = json_inicial
         self.ultimo_path = path_inicial
         self.prompt_inicial = prompt_inicial
-        self.indice_pendiente = indice_inicial
         self.historial_mensajes = []
 
         if json_inicial and path_inicial:
@@ -1383,9 +1398,6 @@ class ChatFrame(ctk.CTkFrame):
                 detalles = ", ".join([f"{img['nombre']} ({img['escala']}cm)" for img in imagenes])
                 self._agregar_burbuja(f"Imagenes anadidas: {detalles}")
 
-            if self.indice_pendiente:
-                data["indice"] = self.indice_pendiente
-
             self.ultimo_json = data
             self.estado = "esperando_nombre"
             self._agregar_burbuja("Listo! Que nombre le pones al archivo? (sin extension)")
@@ -1515,9 +1527,6 @@ class ChatFrame(ctk.CTkFrame):
                 data["imagenes"] = imagenes
                 detalles = ", ".join([f"{img['nombre']} ({img['escala']}cm)" for img in imagenes])
                 self._agregar_burbuja(f"Imagenes anadidas: {detalles}")
-
-            if self.indice_pendiente:
-                data["indice"] = self.indice_pendiente
 
             self.ultimo_json = data
             path = self.ultimo_path

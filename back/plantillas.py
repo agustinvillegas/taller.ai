@@ -39,10 +39,6 @@ def _secciones_texto(secciones: list[str]) -> str:
     return "\n".join(f"- {s}" for s in secciones)
 
 
-def _construir_indice(secciones: list[str]) -> list[dict]:
-    return [{"titulo": s, "nivel": 1} for s in secciones]
-
-
 def prompt_factura(cliente: str = "", items: str = "", condicion_pago: str = "",
                    sesion: dict = None, nota: str = "") -> str:
     ctx = _ctx(sesion)
@@ -215,18 +211,17 @@ Usar colores dinamicos y profesionales en encabezados."""
 
 
 def prompt_informe_word(tema: str = "", secciones: list[str] = None,
-                        sesion: dict = None, nota: str = "") -> tuple:
+                        sesion: dict = None, nota: str = "") -> str:
     ctx = _ctx(sesion)
     if not secciones:
         secciones = ["Introducción", "Desarrollo", "Conclusión"]
     sec_texto = _secciones_texto(secciones)
-    indice = _construir_indice(secciones)
     datos = _datos_provistos({
         "Tema del informe": tema,
         "Secciones": " | ".join(secciones),
         "Anotación adicional": nota,
     })
-    prompt = f"""{ctx}Generá un informe Word completo y profesional.
+    return f"""{ctx}Generá un informe Word completo y profesional.
 
 DATOS PROVISTOS POR EL USUARIO:
 {datos}
@@ -244,7 +239,6 @@ REGLAS:
 - Usá subsecciones donde sea necesario para organizar mejor la información.
 
 El contenido debe ser específico, informativo y profesional."""
-    return prompt, indice
 
 
 def prompt_catalogo_word(productos: list = None, sesion: dict = None, nota: str = "") -> str:
